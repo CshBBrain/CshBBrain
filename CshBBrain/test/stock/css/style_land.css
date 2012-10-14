@@ -1,0 +1,37 @@
+@charset "utf-8";
+/* CSS Document */
+@import url("style.css");
+
+body{width:980px;}
+section.nav{ width:980px;}
+.subNav { width:980px;}
+.slipMarquee {width:980px;}
+
+section.multiLists{width:980px;}
+section.multiLists .multiList:nth-child(2){float:left;border-right:1px solid #CCC; height:222px; padding-right:10px;}
+section.multiLists .multiList:nth-child(2),.multiList:nth-child(3){width:240px;}
+section.multiLists .multiList:nth-child(3) .outPost{margin-left:10px; margin-right:0;}
+section.multiLists .multiList:nth-child(3),.multiList:nth-child(5){ float:none;}
+section.multiLists .multiList:nth-child(3){border-right:none;}
+section.multiLists .multiList:nth-child(3) img{padding-right:0; width:230px;}
+section.multiLists .multiList:nth-child(4){width:488px; float:left;border-right:1px solid #CCC; height:222px;}
+section.multiLists .multiList:nth-child(4) .outPost{margin-left:0; margin-right:10px;border-bottom:none;}
+section.multiLists .multiList:nth-child(5) .outPost{margin-left:10px;}
+section.multiLists .multiList:nth-child(5){ float:left;width:250px; margin-top:5px;}
+section.multiLists .multiList:nth-child(6){margin-top:5px;}
+section.multiLists .multiList:nth-child(3) .postIn,.multiList:nth-child(5) .postIn{ -webkit-column-count:1;-webkit-column-gap:0;}
+section.multiLists .multiList:nth-child(4) .postIn{ -webkit-column-count:2;-webkit-column-gap:16px; height:13em;}
+
+/*section.multiLists .multiList:nth-child(4),.multiList:nth-child(5),.multiList:nth-child(6){margin-top:5px;}*/
+
+
+
+
+section.contents{width:980px;}
+section.contents .content{margin-top:15px;height:610px;-webkit-column-gap:2em; -webkit-column-count:3;}
+section.contents .content img{width:313px;height:601px;}
+
+
+footer{width:978px;}
+footer div{width:978px; height:68px;}
+
