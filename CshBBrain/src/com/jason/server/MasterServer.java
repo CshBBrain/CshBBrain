@@ -44,11 +44,13 @@ public class MasterServer {
 	private static final String SOCKECT_RECVEID_BUFFER_SIZE = "sockectReceiveBufferSize";// sockect发送缓冲区大小
 	private static final String BROAD_SWITCH = "broadSwitch";// 广播开关
 	private static final String KEEP_CONNECT = "keepConnect";
+	private static final String TIME_OUT = "timeOut";// timeout 参数
 	public static boolean keepConnect = false;// 是否保持链接
 	
 	private int sockectSendBufferSize = 64;// 默认为64k
 	private int sockectReceiveBufferSize = 5;// 默认为5k
 	private Boolean broadSwitch = false;//默认广播开关关闭
+	private Integer timeOut = 10;// 默认没有收到数据的超时阀值为10分钟，超过指定时间没有收到数据立即关闭连接
 	
 	// 定义编码处理器，业务处理器，解码处理器
 	private CoderHandler coderHandler;// 编码处理器
@@ -72,6 +74,8 @@ public class MasterServer {
 	
 	private Thread broadMessageThread;// 发送广播消息的线程
 	
+	private Thread clientMonitor;// 客户端连接数据接收状况监听，对于超过时限没有接收到数据的客户端关闭连接
+	
 	private volatile BlockingQueue<Worker> workers;// 读取的工作线程
 	private volatile Worker[] workersList;// 读取线程列表
 		
@@ -82,6 +86,12 @@ public class MasterServer {
 		this.port = Config.getInt(PORT_NAME);// 从配置中获取端口号
 		if(this.port == null){
 			this.port = 9090;// 设置默认端口为9090
+		}
+		
+		// 设置超时
+		this.timeOut = Config.getInt(TIME_OUT);// 获取配置中的超时设置
+		if(this.timeOut == null){
+			this.timeOut = 10;// 设置默认超时时限为10分钟
 		}
 		
 		// 设置线程优先级
@@ -148,6 +158,10 @@ public class MasterServer {
 		}
 		
 		this.createConnectDistributeThread(serverPriority);// 创建链接调度线程
+		
+		if(this.timeOut > 0){
+			this.createClientMonitorThread(serverPriority);// 创建客户端数据接收状态监听线程
+		}
 	}
 	
 	private void createBroadMessageThread(int serverPriority) {
@@ -505,6 +519,62 @@ public class MasterServer {
 	 */
 	public static void addBroadMessage(Response msg){
 		broadMessages.add(msg);
+	}
+	
+	// 创建链接调度线程
+	private void createClientMonitorThread(int serverPriority){
+		//创建监听线程
+		noStopRequested = true;
+		Runnable monitorRunner = new Runnable(){
+			public void run(){
+				try{
+					startClientMonitor();
+				}catch(Exception e){
+					e.printStackTrace();
+				}
+			}
+		};
+		
+		this.clientMonitor = new Thread(monitorRunner);
+		this.clientMonitor.setName("客户端数据接收状况监听主线程");
+		log.info("客户端数据接收状况监听主线程创建成功");
+		this.clientMonitor.setPriority(serverPriority);
+		this.clientMonitor.start();
+	}
+	
+	/**
+	 * 
+	 * <li>方法名：startClientMonitor
+	 * <li>
+	 * <li>返回类型：void
+	 * <li>说明：开始执行客户端数据发送状况监听
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-12
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	private void startClientMonitor(){			
+		while(noStopRequested){
+			try {
+				if(this.timeOut > 0){// 超时阀值				
+					Iterator<Integer> it = clients.keySet().iterator();
+					while(it.hasNext()){
+						Integer key = it.next();
+						Client client = clients.get(key);
+						if(!client.isReadDataFlag()){// 超时没有收到数据
+							client.close();// 关闭连接
+							clients.remove(key);// 从映射表中删除连接
+						}else{
+							client.setReadDataFlag(false);// 将读取数据标识设置为false
+						}
+					}
+					
+					this.clientMonitor.sleep(this.timeOut * 60 * 1000);// 暂停10分钟
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
 	}
 
 	// 创建链接调度线程

@@ -35,7 +35,7 @@ public class Client{
 	private ReadWriteMonitor inputMonitorWorker;
 	private Integer readCount = 0;// 读取次数
 	private boolean preBlank = false;//上次读取为空读
-	
+	private boolean readDataFlag = true;//数据读取标识
 	private Request requestWithFile = null;// 文件接收器
 	
 	// 定义编码处理器，业务处理器，解码处理器
@@ -250,16 +250,7 @@ public class Client{
 		boolean readSuccess = false;// 是否读取到数据标识
 		boolean returnValue = false;// 返回值	
 		
-		try{
-			/*while(socketChannel.read(byteBuffer) > 0){// 读取客户端请求的数据并解码					
-				byteBuffer.flip();
-				//HttpParseUtils.decode(byteBuffer, this.requestWithFile);
-				this.decoderHandler.process(byteBuffer,this);// 解码处理				
-				byteBuffer.clear();
-				
-				readSuccess = true;
-			}*/
-			
+		try{			
 			int dataLength = 0;
 			do{// 读取客户端请求的数据并解码					
 				dataLength = socketChannel.read(byteBuffer);				
@@ -268,6 +259,7 @@ public class Client{
 					this.decoderHandler.process(byteBuffer,this);// 解码处理				
 					byteBuffer.clear();					
 					readSuccess = true;
+					this.readDataFlag = true;// 将读取数据标识设置为真
 					this.preBlank = false;// 上次不为空读
 				}else{
 					if(this.preBlank){
@@ -331,10 +323,6 @@ public class Client{
 				this.registeRead();
 			}
 		}
-		
-		/*if(SockectServer.keepConnect){//长连接
-			this.registeRead();
-		}*/
 		
 		if(returnValue){// 读取完毕放入处理队列
 			HashMap<String, String> requestData = requestWithFile.getRequestData();
@@ -648,5 +636,13 @@ public class Client{
 			e.printStackTrace();
 			this.close();
 		}
+	}
+	
+	public boolean isReadDataFlag() {
+		return readDataFlag;
+	}
+
+	public void setReadDataFlag(boolean readDataFlag) {
+		this.readDataFlag = readDataFlag;
 	}
 }
