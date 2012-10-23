@@ -44,7 +44,35 @@ public class Client{
 	private ProcessHandler processHandler;// 业务处理器
 	private String protocolVersion = "0";//协议版本
 	private Object session;//连接会话对象，由开发者自己定义使用
+	private Object handShakObject;// 握手处理对象
+	private Integer index;// 客户端在索引
 	
+	public Integer getIndex() {
+		return index;
+	}
+
+	public void setIndex(Integer index) {
+		this.index = index;
+	}
+
+	public  <T> T  getHandShakObject() {
+		return (T)handShakObject;
+	}
+
+	public void setHandShakObject(Object handShakObject) {
+		this.handShakObject = handShakObject;
+	}
+
+	private boolean isClient = false;// 是否为连接的客户端，默认为不是
+	
+	public boolean isClient() {
+		return isClient;
+	}
+
+	public void setClient(boolean isClient) {
+		this.isClient = isClient;
+	}
+
 	/**
 	 * 
 	 * <li>方法名：getSession
@@ -217,6 +245,7 @@ public class Client{
 		// 关闭连接
 		SocketChannel socketChannel = (SocketChannel) this.key.channel();
 		try{
+			this.sockectServer.clearSocket(index);// 清除
 			unregiste();			
 			this.key.attach(null);
 			this.key.cancel();
@@ -446,7 +475,12 @@ public class Client{
 	 * <li>修改日期：
 	 */
 	public static Client getSockector(SelectionKey key){
-		return (Client)key.attachment();
+		Object attachment = key.attachment();
+		if(attachment instanceof Client){
+			return (Client)attachment;
+		}else{
+			return null;
+		}
 	}
 	
 	/**
@@ -622,16 +656,27 @@ public class Client{
 	 * <li>方法名：broadCastMessage
 	 * <li>
 	 * <li>返回类型：void
-	 * <li>说明：发送广播消息
+	 * <li>说明：往连接的对端发送消息
 	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
 	 * <li>创建日期：2012-10-2
 	 * <li>修改人： 
 	 * <li>修改日期：
 	 */
-	public void receiveMessage(Response msg){
+	public void sendMessage(Response msg){
 		try{
-			this.responseMsgs.add(msg);		
+			this.responseMsgs.add(msg);
+			log.info(msg.getBody());
 			this.inputMonitorWorker.registeWrite(key);
+		}catch(Exception e){
+			e.printStackTrace();
+			this.close();
+		}
+	}
+	
+	public void sendDirectMessage(Response msg){
+		try{
+			this.responseMsgs.add(msg);
+			this.sendMsgs();
 		}catch(Exception e){
 			e.printStackTrace();
 			this.close();
@@ -644,5 +689,21 @@ public class Client{
 
 	public void setReadDataFlag(boolean readDataFlag) {
 		this.readDataFlag = readDataFlag;
+	}
+	
+	/**
+	 * 
+	 * <li>方法名：handShak
+	 * <li>
+	 * <li>返回类型：void
+	 * <li>说明：执行握手请求处理
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-22
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	public void requestHandShak(){
+		this.isClient = true;// 连接的客户端
+		this.coderHandler.handShak(this);
 	}
 }

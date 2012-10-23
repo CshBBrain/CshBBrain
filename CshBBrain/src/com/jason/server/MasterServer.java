@@ -7,6 +7,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -20,9 +21,13 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import com.jason.Config;
+import com.jason.server.clusters.ClustersCoder;
+import com.jason.server.clusters.ClustersDecoder;
+import com.jason.server.clusters.ClustersProcesser;
 import com.jason.server.hander.CoderHandler;
 import com.jason.server.hander.DecoderHandler;
 import com.jason.server.hander.ProcessHandler;
+import com.jason.util.MyStringUtil;
 
 /**
  * 
@@ -42,6 +47,13 @@ public class MasterServer {
 	private static final String MONITOR_WORKER = "monitorWorker";// 数据接收监听线程因子/核
 	private static final String SOCKECT_SEND_BUFFER_SIZE = "sockectSendBufferSize";// sockect读取缓冲区大小
 	private static final String SOCKECT_RECVEID_BUFFER_SIZE = "sockectReceiveBufferSize";// sockect发送缓冲区大小
+	
+	// 集群相关参数
+	private static final String CLUSTERS_SWITCH = "clustersSwitch";// 集群开关
+	private static final String CLUSTERS_PORT = "clustersPort";// 集群端口
+	private static final String CLUSTERS_ROLE = "clustersRole";// 集群服务器责任
+	private static final String MASTER_SERVER = "masterServer";// 集群管理服务器
+	
 	private static final String BROAD_SWITCH = "broadSwitch";// 广播开关
 	private static final String KEEP_CONNECT = "keepConnect";
 	private static final String TIME_OUT = "timeOut";// timeout 参数
@@ -57,6 +69,11 @@ public class MasterServer {
 	private DecoderHandler decoderHandler;// 解码处理器
 	private ProcessHandler processHandler;// 业务处理器
 	
+	// 定义集群编码处理器，集群处理器和集群解码处理器
+	private ClustersCoder clustersCoder;// 集群编码处理器
+	private ClustersDecoder clustersDecoder;// 集群解码处理器
+	private ClustersProcesser clustersProcesser;// 集群处理器
+	
 	private static volatile LinkedBlockingQueue<Response> broadMessages = new LinkedBlockingQueue<Response>();// 广播消息队列 
 	private String stockData;// 股指数据，多个股指之间用逗号分隔
 	
@@ -66,18 +83,26 @@ public class MasterServer {
 	private final AtomicInteger threadIndex = new AtomicInteger();// 线程索引号
 	private final AtomicInteger keyIndex = new AtomicInteger();// 连接序号
 	
-	private volatile Integer port;
+	private volatile Integer port;// 业务处理服务器端口
+	
+	// 服务器集群参数变量
+	private Boolean clustersSwitch = false;// 集群开关,默认不开启
+	private Integer clustersPort = 9292;// 集群端口，默认为9292
+	private Integer clustersRole = 1;// 集群服务器责任，默认为普通业务服务器
+	private String masterServer;// 集群管理服务器
 	
 	private Thread connectMonitor;// 连接处理线程
+	private Thread clustersMonitor;// 集群连接处理线程
 
-	private ReadWriteMonitor[] readWriteMonitors;// 客户发送请求监督程序
+	private ArrayList<ReadWriteMonitor> readWriteMonitors;// 客户发送请求监督程序
 	
 	private Thread broadMessageThread;// 发送广播消息的线程
+	private Thread clustersClientThread;// 发送广播消息的线程
 	
 	private Thread clientMonitor;// 客户端连接数据接收状况监听，对于超过时限没有接收到数据的客户端关闭连接
 	
 	private volatile BlockingQueue<Worker> workers;// 读取的工作线程
-	private volatile Worker[] workersList;// 读取线程列表
+	private volatile ArrayList<Worker> workersList;// 读取线程列表
 		
 	private volatile boolean noStopRequested = true;// 循环控制变量
 	
@@ -136,34 +161,215 @@ public class MasterServer {
 			this.broadSwitch = broad;
 		}
 		
+		// 设置集群开关
+		Boolean clustersSwitch = Config.getBoolean(CLUSTERS_SWITCH);
+		if(clustersSwitch != null){
+			this.clustersSwitch = clustersSwitch;
+		}
+		
+		// 设置集群端口
+		Integer clustersPort = Config.getInt(CLUSTERS_PORT);
+		if(clustersPort != null){
+			this.clustersPort = clustersPort;
+		}
+		
+		// 设置服务器的职责
+		Integer clustersRole = Config.getInt(CLUSTERS_ROLE);
+		if(clustersRole != null){
+			this.clustersRole = clustersRole;
+		}
+		
+		// 设置集群中的上级服务器
+		String masterServer = Config.getStr(MASTER_SERVER);
+		if(masterServer != null){
+			this.masterServer = masterServer;
+		}
+		
 		// 设置解码器，编码器和业务处理器
 		this.coderHandler = coderHandler;
 		this.decoderHandler = decoderHandler;
 		this.processHandler = processHandler;
 		
 		this.workers = new ArrayBlockingQueue<Worker>(Runtime.getRuntime().availableProcessors() * requestWorker);
-		this.workersList = new Worker[Runtime.getRuntime().availableProcessors() * requestWorker];//响应处理线程列表
+		this.workersList = new ArrayList<Worker>(Runtime.getRuntime().availableProcessors() * requestWorker);//响应处理线程列表
 		
 		for(int i = 0; i < Runtime.getRuntime().availableProcessors()*requestWorker; ++i){
-			this.workersList[i] = new Worker(serverPriority,workers);
+			workersList.add(new Worker(serverPriority,workers));			
 		}		
 		
-		readWriteMonitors = new ReadWriteMonitor[Runtime.getRuntime().availableProcessors() * monitorWorker];
+		readWriteMonitors = new ArrayList<ReadWriteMonitor>(Runtime.getRuntime().availableProcessors() * monitorWorker);
 		for(int i = 0; i < Runtime.getRuntime().availableProcessors() * monitorWorker;++i){
-			readWriteMonitors[i] = create(serverPriority);// 创建请求发送监听线程
+			readWriteMonitors.add(create(serverPriority));// 创建请求发送监听线程
 		}
 		
 		if(this.broadSwitch){// 根据开关是否创建广播线程
 			this.createBroadMessageThread(serverPriority);//创建广播消息线程
 		}
 		
-		this.createConnectDistributeThread(serverPriority);// 创建链接调度线程
+		this.createConnectDistributeThread(serverPriority);// 创建业务连接建立监听线程
 		
 		if(this.timeOut > 0){
 			this.createClientMonitorThread(serverPriority);// 创建客户端数据接收状态监听线程
 		}
+		
+		// 处理集群初始化
+		if(this.clustersSwitch){
+			// 创建集群编码解码器和集群业务处理器
+			this.clustersCoder = new ClustersCoder();
+			this.clustersDecoder = new ClustersDecoder();
+			this.clustersProcesser = new ClustersProcesser();
+			
+			this.createClustersDistributeThread(serverPriority);// 创建集群连接建立监听线程
+			
+			// 连接到自己的直接管理服务器节点
+			if((this.clustersRole == 1 || this.clustersRole == 3) && !MyStringUtil.isBlank(this.masterServer)){
+				this.createClustersClientThread(serverPriority);// 创建集群通信客户端消息处理线程
+			}
+		}
 	}
 	
+	/**
+	 * 
+	 * <li>方法名：createClustersClientThread
+	 * <li>@param serverPriority
+	 * <li>返回类型：void
+	 * <li>说明：创建集群服务器客户端处理线程
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-22
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	private void createClustersClientThread(int serverPriority) {
+		// 集群服务器通信处理客户端线程
+		Runnable writeDistributeRunner = new Runnable(){
+			public void run(){
+				try{
+					startClustersMessage();
+				}catch(Exception e){
+					e.printStackTrace();
+				}
+			}			
+		};
+		
+		this.clustersClientThread = new Thread(writeDistributeRunner);
+		this.clustersClientThread.setName("集群通信客户端消息处理线程");
+		this.clustersClientThread.setPriority(serverPriority);
+		this.clustersClientThread.start();
+		log.info("集群通信客户端消息处理线程创建完毕");
+	}
+	
+	/**
+	 * 
+	 * <li>方法名：startClustersMessage
+	 * <li>
+	 * <li>返回类型：void
+	 * <li>说明：开始处理集群通信客户端的消息
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-22
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	protected void startClustersMessage(){
+		Boolean isConnect = true;// 是否连接集群服务器
+		SocketChannel socketChannel = null;// 连接客户端通道
+		
+		String[] address = this.masterServer.split(":");// 集群服务器地址
+		if(address.length < 2){// 集群服务器地址错误
+			log.info("集群服务器地址配置错误，集群服务器地址格式为：ip:port，例如：192.168.2.32：9090，请重新配置后再启动");
+			return;
+		}
+		 
+		if(MyStringUtil.isBlank(address[0]) || MyStringUtil.isBlank(address[1])){// 集群服务器ip地址错误
+			log.info("集群服务器ip地址配置错误，集群服务器ip地址格式为：ip:port，例如：192.168.2.32：9090，请重新配置后再启动");
+			return;
+		}					
+		 
+		InetSocketAddress socketAddress = new InetSocketAddress(address[0], Integer.parseInt(address[1]));
+		 
+		while(noStopRequested){
+			try{				
+				if(isConnect && socketChannel == null){// 第一次连接或连接断开都需要连接到集群服务器上 
+				try{					 
+					 if(socketChannel != null && socketChannel.isConnected() && !socketChannel.isOpen()){
+						 socketChannel.close();  
+						 log.info("已经连接到集群服务器，但连接断开，重新连接");  
+					 }
+					 socketChannel = SocketChannel.open();
+					 socketChannel.configureBlocking(false);
+					 socketChannel.socket().setSoTimeout(0);
+					 socketChannel.socket().setTcpNoDelay(true);
+			         socketChannel.socket().setReuseAddress(true); 
+			         
+			         socketChannel.socket().setReceiveBufferSize(this.sockectReceiveBufferSize * 1024);// 设置接收缓存
+			         socketChannel.socket().setSendBufferSize(this.sockectSendBufferSize * 1024);// 设置发送缓存
+			 		
+			         socketChannel.connect(socketAddress);
+			         
+			         if(socketChannel.finishConnect()){
+			        	 //socketChannel.finishConnect();// 连接建立完成
+			        	 isConnect = false;// 不需要做连接服务器了的操作了，已经连接上集群服务器了  			        	 
+			        	 this.readWriteMonitors.get(Math.abs(this.connectIndex.getAndIncrement()) 
+			    			     % this.readWriteMonitors.size()).registeClient(socketChannel);			        	 
+			        	 log.info("成功连接到集群服务器  " + address[0] + " 的端口:" + address[1]);  
+		            }
+			         
+			        }catch(ClosedChannelException e){  
+			            log.info("连接集群服务器失败");  
+			        }catch(IOException e){  
+			            log.info("连接集群服务器失败");  
+			        }
+				}else{// 处理消息监听
+					if(isConnect && socketChannel.isConnectionPending()){// 正在连接服务器
+						Thread.sleep(1000);// 正在连接，等待30秒
+					}
+					
+					try {
+						if(isConnect && socketChannel.finishConnect()){// 已经建立连接
+							 try{
+								socketChannel.finishConnect();// 连接建立完成
+						    	isConnect = false;// 不需要做连接服务器了的操作了，已经连接上集群服务器了  	
+								this.readWriteMonitors.get(Math.abs(this.connectIndex.getAndIncrement()) 
+									     % this.readWriteMonitors.size()).registeClient(socketChannel);
+							}catch(IOException e){								
+								log.warn(e.getMessage());
+							}			        	 
+							log.info("成功连接到集群服务器  ");
+						}
+					} catch (IOException e) {
+						log.warn(e.getMessage());
+					}
+					
+					if(!isConnect && !socketChannel.isConnected()){// 到集群服务器的连接端口，重新连接
+						isConnect = true;
+						try{
+							socketChannel.connect(socketAddress);
+						}catch(IOException e){
+							log.warn(e.getMessage());
+						}// 重新连接
+						continue;
+					}
+					
+					if(!isConnect && socketChannel.isConnected()){
+						Thread.sleep(10 * 60 * 1000);//10分钟检查一次
+					}
+				}				
+			}catch(InterruptedException e){
+				e.printStackTrace();
+			}
+		}		
+	}
+		
+	/**
+	 * 
+	 * <li>方法名：createBroadMessageThread
+	 * <li>@param serverPriority
+	 * <li>返回类型：void
+	 * <li>说明：创建广播线程
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-22
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
 	private void createBroadMessageThread(int serverPriority) {
 		// 消息广播线程
 		Runnable writeDistributeRunner = new Runnable(){
@@ -183,15 +389,26 @@ public class MasterServer {
 		log.info("消息广播线程创建完毕");
 	}
 
+	/**
+	 * 
+	 * <li>方法名：startBroadMessage
+	 * <li>
+	 * <li>返回类型：void
+	 * <li>说明：开始处理广播消息
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-22
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
 	protected void startBroadMessage(){		
 		while(noStopRequested){
 			try{
 				Response msg = broadMessages.take();//获取广播消息
 				Iterator<Client> it = this.clients.values().iterator();
 				while(it.hasNext()){
-					log.info(msg.getBody());
+					//log.info(msg.getBody());
 					Client socketer = it.next();
-					socketer.receiveMessage(msg);
+					socketer.sendMessage(msg);
 				}
 			}catch(InterruptedException e){
 				e.printStackTrace();
@@ -233,6 +450,8 @@ public class MasterServer {
 		private final AtomicBoolean wakenUp = new AtomicBoolean();		
 		private Selector selector;// 选择器
 		private ConcurrentLinkedQueue<SocketChannel> socketChannels = new ConcurrentLinkedQueue<SocketChannel>();//通道注册队列
+		private ConcurrentLinkedQueue<SocketChannel> clustersSocketChannels = new ConcurrentLinkedQueue<SocketChannel>();//集群通道注册队列
+		private ConcurrentLinkedQueue<SocketChannel> clientSocketChannels = new ConcurrentLinkedQueue<SocketChannel>();//集群客户端或其他客户端通道注册队列
 		private ConcurrentLinkedQueue<SelectionKey> readKeys = new ConcurrentLinkedQueue<SelectionKey>();// 选择键注册read队列
 		private ConcurrentLinkedQueue<SelectionKey> writeKeys = new ConcurrentLinkedQueue<SelectionKey>();// 选择键注册write队列
 		private volatile LinkedBlockingQueue<SelectionKey> readPool = new LinkedBlockingQueue<SelectionKey>();// 读取队列
@@ -265,6 +484,38 @@ public class MasterServer {
 			// Register the new SocketChannel with our Selector, indicating
 			// we'd like to be notified when there's data waiting to be read			
 			this.socketChannels.offer(socketChannel);
+			
+			if (wakenUp.compareAndSet(false, true)) {
+	            selector.wakeup();
+	        }
+		}
+		
+		/**
+		 * 
+		 * <li>方法名：registeClusters
+		 * <li>@param socketChannel
+		 * <li>@throws IOException
+		 * <li>返回类型：void
+		 * <li>说明：注册集群客户端连接通道
+		 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+		 * <li>创建日期：2012-10-22
+		 * <li>修改人： 
+		 * <li>修改日期：
+		 */
+		public void registeClusters(SocketChannel socketChannel) throws IOException {		
+			// Register the new SocketChannel with our Selector, indicating
+			// we'd like to be notified when there's data waiting to be read			
+			this.clustersSocketChannels.offer(socketChannel);
+			
+			if (wakenUp.compareAndSet(false, true)) {
+	            selector.wakeup();
+	        }
+		}
+		
+		public void registeClient(SocketChannel socketChannel) throws IOException {		
+			// Register the new SocketChannel with our Selector, indicating
+			// we'd like to be notified when there's data waiting to be read			
+			this.clientSocketChannels.offer(socketChannel);
 			
 			if (wakenUp.compareAndSet(false, true)) {
 	            selector.wakeup();
@@ -323,12 +574,88 @@ public class MasterServer {
 		 * <li>修改日期：
 		 */
 		private void processRegisteAndOps(){
-			SocketChannel socketChannel = this.socketChannels.poll();
+			SocketChannel socketChannel = this.clustersSocketChannels.poll();
+			// 集群服务器连接通道注册
 			while(socketChannel != null){// 处理新建立的链接
 				SelectionKey sk = null;
 				try {
 					sk = socketChannel.register(this.selector, SelectionKey.OP_READ);					
-				}catch(ClosedChannelException e){
+					Client sockector = new Client(sk,MasterServer.this,this);
+						
+					// 根据key中的标识位判断是否为集群
+					sockector.registeHandler(clustersCoder, clustersDecoder, clustersProcesser);// 注册集群处理器
+					//sockector.registeHandler(coderHandler, decoderHandler, processHandler);// 注册业务处理器						
+					
+					sk.attach(sockector);
+					Integer index = keyIndex.incrementAndGet();
+					sockector.setIndex(index);// 设置索引
+					clients.put(index, sockector);// 放入到连接中					
+				}catch(Exception e){
+					e.printStackTrace();
+					try {
+						if(sk != null ){
+							sk.interestOps(0);
+							sk.cancel();
+						}
+						socketChannel.close();
+					}catch(IOException e1){
+						e1.printStackTrace();
+					}
+				}// 将事件注册放到一个容器中统一进行处理
+				socketChannel = this.clustersSocketChannels.poll();
+			}
+			
+			// 注册集群客户端请求通道的选择器
+			socketChannel = this.clientSocketChannels.poll();
+			while(socketChannel != null){// 处理新建立的链接
+				SelectionKey sk = null;
+				try {
+					sk = socketChannel.register(this.selector, SelectionKey.OP_WRITE | SelectionKey.OP_READ);
+					Client sockector = new Client(sk,MasterServer.this,this);
+					
+					// 根据key中的标识位判断是否为集群
+					sockector.registeHandler(clustersCoder, clustersDecoder, clustersProcesser);// 注册集群处理器
+					//sockector.registeHandler(coderHandler, decoderHandler, processHandler);// 注册业务处理器						
+					
+					sk.attach(sockector);
+					
+					sockector.requestHandShak();// 发起握手请求
+					
+					Integer index = keyIndex.incrementAndGet();
+					sockector.setIndex(index);// 设置索引
+					clients.put(index, sockector);// 放入到连接中					
+				}catch(Exception e){
+					e.printStackTrace();
+					try {
+						if(sk != null ){
+							sk.interestOps(0);
+							sk.cancel();
+						}
+						socketChannel.close();
+					}catch(IOException e1){
+						e1.printStackTrace();
+					}
+				}// 将事件注册放到一个容器中统一进行处理
+				socketChannel = this.clientSocketChannels.poll();
+			}
+			
+			// 注册业务请求通道的选择器
+			socketChannel = this.socketChannels.poll();
+			while(socketChannel != null){// 处理新建立的链接
+				SelectionKey sk = null;
+				try {
+					sk = socketChannel.register(this.selector, SelectionKey.OP_READ);
+					Client sockector = new Client(sk,MasterServer.this,this);
+					
+					// 根据key中的标识位判断是否为集群
+					//sockector.registeHandler(clustersCoder, clustersDecoder, clustersProcesser);// 注册集群处理器
+					sockector.registeHandler(coderHandler, decoderHandler, processHandler);// 注册业务处理器						
+					
+					sk.attach(sockector);
+					Integer index = keyIndex.incrementAndGet();
+					sockector.setIndex(index);// 设置索引
+					clients.put(index, sockector);// 放入到连接中					
+				}catch(Exception e){
 					e.printStackTrace();
 					try {
 						if(sk != null ){
@@ -387,12 +714,13 @@ public class MasterServer {
 		private void startInputMonitor(){		
 			while(noStopRequested){	
 				try{
+					//this.processRegisteAndOps();// 处理通道监听注册和读取事件注册
+					
 					int num = 0;
 					//this.selector.selectedKeys().clear();// 清除所有key
 					// Wait for an event one of the registered channels
 					num = this.selector.select(50);
 					
-					this.processRegisteAndOps();// 处理通道监听注册和读取事件注册
 					//num = this.selector.selectNow();
 					if (num > 0){
 						// Iterate over the set of keys for which events are available
@@ -410,14 +738,7 @@ public class MasterServer {
 							}
 		
 							if (key.isReadable()){
-								Client sockector = Client.getSockector(key);
-								if(sockector == null){ // 如果没有进行过处理创建业务处理相关对象
-									sockector = new Client(key,MasterServer.this,this);
-									sockector.registeHandler(coderHandler, decoderHandler, processHandler);// 注册处理器
-									key.attach(sockector);
-									clients.put(keyIndex.incrementAndGet(), sockector);// 放入到连接中
-								}
-								
+								Client sockector = Client.getSockector(key);								
 								sockector.unregisteRead();// 解除监听器对该连接输入数据的监听
 								//key.interestOps(key.interestOps() ^ SelectionKey.OP_READ);
 								addToReadPoll(key);// 添加到读取请求队列中
@@ -427,7 +748,9 @@ public class MasterServer {
 								Client.getSockector(key).sendMsgs();
 							}
 						}
-					}					
+					}
+					
+					this.processRegisteAndOps();// 处理通道监听注册和读取事件注册
 				}catch(Exception e){
 					e.printStackTrace();
 				}
@@ -577,7 +900,17 @@ public class MasterServer {
 		}
 	}
 
-	// 创建链接调度线程
+	/**
+	 * 
+	 * <li>方法名：createConnectDistributeThread
+	 * <li>@param serverPriority
+	 * <li>返回类型：void
+	 * <li>说明：创建连接建立请求监听线程
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-21
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
 	private void createConnectDistributeThread(int serverPriority){
 		//创建监听线程
 		noStopRequested = true;
@@ -600,10 +933,104 @@ public class MasterServer {
 	
 	/**
 	 * 
+	 * <li>方法名：createClustersDistributeThread
+	 * <li>@param serverPriority
+	 * <li>返回类型：void
+	 * <li>说明：创建集群连接建立请求监听线程
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-21
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	private void createClustersDistributeThread(int serverPriority){
+		//创建监听线程
+		noStopRequested = true;
+		Runnable monitorRunner = new Runnable(){
+			public void run(){
+				try{
+					startClustersMonitor();
+				}catch(Exception e){
+					e.printStackTrace();
+				}
+			}
+		};
+		
+		this.clustersMonitor = new Thread(monitorRunner);
+		this.clustersMonitor.setName("sockent 集群接收主线程");
+		log.info("集群连接监听线程创建成功");
+		this.clustersMonitor.setPriority(serverPriority);
+		this.clustersMonitor.start();
+	}
+	
+	/**
+	 * 
+	 * <li>方法名：startClustersMonitor
+	 * <li>
+	 * <li>返回类型：void
+	 * <li>说明：开始监听集群服务器节点中的连接请求
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-21
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	private void startClustersMonitor(){		
+		try{
+			// Create a new selector
+			Selector selector = Selector.open();
+			
+			// Create a new non-blocking server socket channel
+			ServerSocketChannel serverChannel = ServerSocketChannel.open();
+			serverChannel.configureBlocking(false);
+			
+			InetSocketAddress isa = new InetSocketAddress(this.clustersPort);// 集群端口
+			serverChannel.socket().bind(isa);			
+						
+			// Register the server socket channel, indicating an interest in 
+			// accepting new connections
+			serverChannel.register(selector, SelectionKey.OP_ACCEPT);
+			
+			log.info("集群服务器准备就绪，等待集群请求到来");
+			while(noStopRequested){
+				try {					
+					int num = 0;
+					// Wait for an event one of the registered channels
+					num = selector.select(100);
+					if (num > 0) {
+						// Iterate over the set of keys for which events are available
+						Iterator<SelectionKey> selectedKeys = selector.selectedKeys().iterator();
+						while (selectedKeys.hasNext()) {
+							SelectionKey key = (SelectionKey) selectedKeys.next();
+							selectedKeys.remove();
+							
+							if (!key.isValid()) {
+								continue;
+							}
+		
+							// Check what event is available and deal with it
+							if (key.isAcceptable()) {
+								this.accept(key,true);// 注册集群连接
+							}
+						}
+					}					
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+			
+			serverChannel.close();// 关闭服务器
+			
+		}catch(Exception e){
+			e.printStackTrace();
+			System.out.println("Clusters Server start up fail");
+		}
+	}
+	
+	/**
+	 * 
 	 * <li>方法名：startMonitor
 	 * <li>
 	 * <li>返回类型：void
-	 * <li>说明：
+	 * <li>说明：开始监听业务请求处理
 	 * <li>创建人：CshBBrain;技术博客：http://cshbbrain.iteye.com/
 	 * <li>创建日期：2011-9-28
 	 * <li>修改人： 
@@ -619,7 +1046,7 @@ public class MasterServer {
 			serverChannel.configureBlocking(false);
 			
 			InetSocketAddress isa = new InetSocketAddress(this.port);
-			serverChannel.socket().bind(isa);
+			serverChannel.socket().bind(isa);			
 						
 			// Register the server socket channel, indicating an interest in 
 			// accepting new connections
@@ -644,7 +1071,7 @@ public class MasterServer {
 		
 							// Check what event is available and deal with it
 							if (key.isAcceptable()) {
-								this.accept(key);
+								this.accept(key,false);
 							}
 						}
 					}					
@@ -657,11 +1084,24 @@ public class MasterServer {
 			
 		}catch(Exception e){
 			e.printStackTrace();
-			System.out.println("HttpServer start up fail");
+			System.out.println("Server start up fail");
 		}
 	}
 	
-	private void accept(SelectionKey key) throws IOException {
+	/**
+	 * 
+	 * <li>方法名：accept
+	 * <li>@param key
+	 * <li>@param isClusters
+	 * <li>@throws IOException
+	 * <li>返回类型：void
+	 * <li>说明：根据请求创建连接，可以是来自客户端的请求，也可能是来自集群中其他服务器的请求
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-21
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	private void accept(SelectionKey key,Boolean isClusters) throws IOException {
 		// For an accept to be pending the channel must be a server socket channel.
 		ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key.channel();
 
@@ -681,8 +1121,13 @@ public class MasterServer {
 		}
 		
 		// 将客户端sockect通道注册到指定的输入监听线程上
-		this.readWriteMonitors[Math.abs(this.connectIndex.getAndIncrement()) 
-		                        % this.readWriteMonitors.length].registe(socketChannel);		
+		if(isClusters){// 集群请求通道注册
+			this.readWriteMonitors.get(Math.abs(this.connectIndex.getAndIncrement()) 
+			     % this.readWriteMonitors.size()).registeClusters(socketChannel);
+		}else{// 业务请求通道注册
+			this.readWriteMonitors.get(Math.abs(this.connectIndex.getAndIncrement()) 
+			     % this.readWriteMonitors.size()).registe(socketChannel);
+		}
 	}
 	
 	
@@ -704,5 +1149,20 @@ public class MasterServer {
 
 	public void setStockData(String stockData) {
 		this.stockData = stockData;
+	}
+	
+	/**
+	 * 
+	 * <li>方法名：clearSocket
+	 * <li>@param index
+	 * <li>返回类型：void
+	 * <li>说明：删除指定的连接
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-22
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	public void clearSocket(Integer index){
+		this.clients.remove(index);
 	}
 }

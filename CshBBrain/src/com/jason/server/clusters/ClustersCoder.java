@@ -6,10 +6,13 @@
  * <li>修改人： 
  * <li>修改日期：
  */
-package com.jason.server.ws;
+package com.jason.server.clusters;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.Iterator;
+import java.util.UUID;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -17,7 +20,6 @@ import org.apache.commons.logging.LogFactory;
 import com.jason.server.Response;
 import com.jason.server.Client;
 import com.jason.server.hander.CoderHandler;
-import com.jason.server.ws.biz.Constants;
 import com.jason.util.CoderUtils;
 
 /**
@@ -62,14 +64,14 @@ import com.jason.util.CoderUtils;
  * 
  * </pre>
  * <li>类型名称：
- * <li>说明：http协议响应编码器
+ * <li>说明：cluster协议响应编码器
  * <li>创建人：CshBBrain;技术博客：http://cshbbrain.iteye.com/
  * <li>创建日期：2011-11-18
  * <li>修改人： 
  * <li>修改日期：
  */
-public class WebSocketCoder extends CoderHandler {
-	private static Log log = LogFactory.getLog(WebSocketCoder.class);// 日志记录器
+public class ClustersCoder extends CoderHandler {
+	private static Log log = LogFactory.getLog(ClustersCoder.class);// 日志记录器
 	public void process(Client sockector) {
 		Iterator<Response> msgs = sockector.getResponseMsgs().iterator();		
 		while(msgs.hasNext()){
@@ -79,7 +81,9 @@ public class WebSocketCoder extends CoderHandler {
 				if(sockector.isHandShak()){
 					broundMsg(sockector,msg);
 				}else{
-					sockector.setHandShak(true);//握手已经完成
+					if(!sockector.isClient()){
+						sockector.setHandShak(true);//握手已经完成
+					}
 				}
 			}catch(IOException e){
 				e.printStackTrace();
@@ -93,60 +97,33 @@ public class WebSocketCoder extends CoderHandler {
 	 * <li>@param msg
 	 * <li>@throws IOException
 	 * <li>返回类型：void
-	 * <li>说明：将消息的头部和尾部分隔符加上
+	 * <li>说明：对clusters协议进行编码
 	 * <li>创建人：CshBBrain;技术博客：http://cshbbrain.iteye.com/
 	 * <li>创建日期：2012-8-21
 	 * <li>修改人： 
 	 * <li>修改日期：
 	 */
-	public void broundMsg(Client sockector, Response msg) throws IOException{
-		if(sockector.getProtocolVersionInt() <= WebSocketConstants.SPLITVERSION0){// 通过0x00,0xff分隔数据
-			/*ByteBuffer buffer = ByteBuffer.allocate(msg.getBody().getBytes(Utf8Coder.UTF8).length + 2);
-			buffer.put((byte)0x00);
-			buffer.put(msg.getBody().getBytes(Utf8Coder.UTF8));
-			buffer.put((byte)0xFF);
-			msg.setBody(Utf8Coder.decode(buffer));*/
-			//log.info("the bg and end : " + Constants.BEGIN_MSG + " : " + Constants.END_MSG);
-			msg.setBody(Constants.BEGIN_MSG + msg.getBody() + Constants.END_MSG);
-			log.info(msg.getBody());
-		}else{
-			codeVersion6(sockector, msg);
-		}
-    }
-	
-	/**
-	 * 
-	 * <li>方法名：codeVersion6
-	 * <li>@param sockector
-	 * <li>@param msg
-	 * <li>返回类型：void
-	 * <li>说明：对websocket协议进行编码
-	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
-	 * <li>创建日期：2012-10-2
-	 * <li>修改人： 
-	 * <li>修改日期：
-	 */
-	public void codeVersion6(Client sockector, Response msg){		
+	public void broundMsg(Client sockector, Response msg) throws IOException{		
 		byte[] msgs = CoderUtils.toByte(msg.getBody());
-		WebSocketMessage messageFrame = sockector.getRequestWithFile().<WebSocketMessage>getMessageHeader();
+		ClustersMessage messageFrame = sockector.getRequestWithFile().<ClustersMessage>getMessageHeader();
 		
 		if(messageFrame == null){
-			messageFrame = new WebSocketMessage();
+			messageFrame = new ClustersMessage();
 		}
 		messageFrame.setDateLength(msgs.length);
 		
 		byte[] headers = new byte[2];
 		// todo list
-		headers[0] = WebSocketMessage.FIN;// 需要调整
-		headers[0] |= messageFrame.getRsv1() | messageFrame.getRsv2() | messageFrame.getRsv3() | WebSocketMessage.TXT;
+		headers[0] = ClustersMessage.FIN;// 需要调整
+		headers[0] |= messageFrame.getRsv1() | messageFrame.getRsv2() | messageFrame.getRsv3() | ClustersMessage.TXT;
 		headers[1] = 0;
 		//headers[1] |=  messageFrame.getMask() | messageFrame.getPayloadLen();		
 		headers[1] |=  0x00 | messageFrame.getPayloadLen();
 		msg.appendBytes(headers);// 头部控制信息
 		
-		if (messageFrame.getPayloadLen() == WebSocketMessage.HAS_EXTEND_DATA) {// 处理数据长度为126位的情况
+		if (messageFrame.getPayloadLen() == ClustersMessage.HAS_EXTEND_DATA) {// 处理数据长度为126位的情况
 			msg.appendBytes(CoderUtils.shortToByte(messageFrame.getPayloadLenExtended()));
-		} else if (messageFrame.getPayloadLen() == WebSocketMessage.HAS_EXTEND_DATA_CONTINUE) {// 处理数据长度为127位的情况
+		} else if (messageFrame.getPayloadLen() == ClustersMessage.HAS_EXTEND_DATA_CONTINUE) {// 处理数据长度为127位的情况
 			msg.appendBytes(CoderUtils.longToByte(messageFrame.getPayloadLenExtendedContinued()));
 		}
 
@@ -162,5 +139,31 @@ public class WebSocketCoder extends CoderHandler {
 		msg.appendBytes(msgs);
 		
 		sockector.getRequestWithFile().clear();// 清理每次连接交互的数据
+    }
+	
+	public void handShak(Client sockector) {
+		Response response = new Response();		
+		StringBuilder sb = new StringBuilder();		
+		try{
+			ClustersHandShak handShak = new ClustersHandShak(generateKey(),InetAddress.getLocalHost().getHostAddress().toString());
+			sb.append(ClustersConstants.CLUSTERS).append("\r\n")			
+			.append(ClustersConstants.HOST).append(":").append(handShak.getHost()).append("\r\n")
+			.append(ClustersConstants.KEY).append(":").append(handShak.getKey()).append("\r\n")
+			.append(ClustersConstants.PROTOCOL).append(":").append(ClustersConstants.PROTOCOL).append("\r\n");
+			sockector.setHandShakObject(handShak);// 设置握手对象
+		}catch(UnknownHostException e){
+			e.printStackTrace();
+		}
+		
+		response.setBody(sb.toString());
+		
+		sockector.sendMessage(response);
+		//sockector.sendDirectMessage(response);// 发送消息
+		log.info("the response: " + sb.toString());		
+	}
+	
+	private String generateKey(){
+		String key = UUID.randomUUID().toString().replace("-", "");
+		return key.substring(0, 24);
 	}
 }

@@ -18,7 +18,7 @@ import com.jason.server.Client;
  * <li>修改人： 
  * <li>修改日期：
  */
-public interface ProcessHandler {
+public abstract class ProcessHandler {
 	/**
 	 * 
 	 * <li>方法名：process
@@ -30,5 +30,5 @@ public interface ProcessHandler {
 	 * <li>修改人： 
 	 * <li>修改日期：
 	 */
-	public void process(Client sockector);
+	public abstract void process(Client sockector);
 }

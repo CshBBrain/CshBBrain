@@ -6,21 +6,21 @@
  * <li>修改人： 
  * <li>修改日期：
  */
-package com.jason.server.ws;
+package com.jason.server.clusters;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 /**
  * <li>类型名称：
- * <li>说明：
+ * <li>说明：cluster协议消息帧格式
  * <li>创建人：CshBBrain;技术博客：http://cshbbrain.iteye.com/
  * <li>创建日期：2012-9-12
  * <li>修改人： 
  * <li>修改日期：
  */
-public class MessageFrame{
-	private static Log log = LogFactory.getLog(MessageFrame.class);// 日志记录器
+public class ClustersMessage{
+	private static Log log = LogFactory.getLog(ClustersMessage.class);// 日志记录器
 	public static final byte FIN = (byte) 0x80; // 1000 0000
 	public static final byte RSV1 = 0x70; // 0111 0000
 	public static final byte RSV2 = 0x30; // 0011 0000
@@ -47,7 +47,7 @@ public class MessageFrame{
 
 	private byte[] payloadData;
 	
-	public MessageFrame(){
+	public ClustersMessage(){
 		
 	}
 

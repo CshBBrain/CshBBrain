@@ -6,7 +6,7 @@
  * <li>修改人： 
  * <li>修改日期：
  */
-package com.jason.server.ws;
+package com.jason.server.clusters;
 
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
@@ -80,28 +80,16 @@ import com.jason.util.CoderUtils;
  * <li>修改人： 
  * <li>修改日期：
  */
-public class WebSocketDecoder extends DecoderHandler {
-	private static Log log = LogFactory.getLog(WebSocketDecoder.class);// 日志记录器
+public class ClustersDecoder extends DecoderHandler {
+	private static Log log = LogFactory.getLog(ClustersDecoder.class);// 日志记录器
 	public static final String TMP_ROOT = "tmpRoot";// 临时文件目录
 	public static final String tmpRoot = Config.getStr(TMP_ROOT);// 文件保存临时目录
 	private static final Pattern PARAM_PATTERN = Pattern.compile("([^=]*)=([^&]*)&*");	
 	
 	public void process(ByteBuffer buffer, Client sockector){		
 		if(sockector.isHandShak()){// 已经握手处理				
-			if(sockector.getProtocolVersionInt() < WebSocketConstants.SPLITVERSION6){// 通过0x00,0xff分隔数据		
-				String msg = CoderUtils.decode(buffer);
-				if(MyStringUtil.isBlank(msg)){
-					return;
-				}
-				
-				log.info("the msg received: " + msg);
-				
-				HashMap<String,String> requestData = new HashMap<String,String>();
-				sockector.getRequestWithFile().setRequestData(requestData);
-				requestData.put(Constants.FILED_MSG, msg);
-			}else{// 通过复杂的数据帧格式来传递数据
-				parserVersion6(buffer,sockector);
-			}
+			// 通过复杂的数据帧格式来传递数据
+			parser(buffer,sockector);
 		}else{// 进行握手处理
 			String msg = CoderUtils.decode(buffer);
 			if(MyStringUtil.isBlank(msg)){
@@ -110,18 +98,21 @@ public class WebSocketDecoder extends DecoderHandler {
 			
 			log.info("the msg received: \r\n" + msg);
 			
-			HashMap<String,String> requestData = new HashMap<String,String>();
-			sockector.getRequestWithFile().setRequestData(requestData);
-			
-			try{
-				WebSocketRequest requestInfo = parserRequest(msg);
+			if(sockector.isClient()){// 接收到本方客户端发送的握手响应包
+				this.processClientHandShak(sockector, msg);// 处理客户端连接握手
+			}else{
+				HashMap<String,String> requestData = new HashMap<String,String>();
+				sockector.getRequestWithFile().setRequestData(requestData);
 				
-				requestData.put(Constants.FILED_MSG, generateHandshake(requestInfo));
-				requestData.put(Constants.HANDSHAKE, Constants.HANDSHAKE);
-				sockector.setProtocolVersion(requestInfo.getSecVersion().toString());//设置协议版本
-			}catch(UnsupportedEncodingException e){
-				e.printStackTrace();
-			}
+				try{
+					ClustersRequest requestInfo = parserRequest(msg);
+					
+					requestData.put(Constants.FILED_MSG, generateHandshake(requestInfo));
+					requestData.put(Constants.HANDSHAKE, Constants.HANDSHAKE);
+				}catch(UnsupportedEncodingException e){
+					e.printStackTrace();
+				}
+			}			
 		}
 	}
     
@@ -137,11 +128,11 @@ public class WebSocketDecoder extends DecoderHandler {
 	 * <li>修改人： 
 	 * <li>修改日期：
 	 */
-    private void parserVersion6(ByteBuffer buffer, Client sockector){
+    private void parser(ByteBuffer buffer, Client sockector){
     	Request requestData= sockector.getRequestWithFile();
-    	WebSocketMessage messageFrame = requestData.<WebSocketMessage>getMessageHeader();
+    	ClustersMessage messageFrame = requestData.<ClustersMessage>getMessageHeader();
     	if(messageFrame == null){// 读取消息帧信息    		
-        	messageFrame = new WebSocketMessage();
+        	messageFrame = new ClustersMessage();
         	requestData.setMessageHeader(messageFrame);
         	requestData.setByteDatas(new ArrayList<byte[]>(2));
         	
@@ -149,26 +140,26 @@ public class WebSocketDecoder extends DecoderHandler {
         	buffer.get(headers, 0, 2);
     		int bt, b2;
     		bt = headers[0];
-    		messageFrame.setFin((byte) (bt & WebSocketMessage.FIN));// 后面是否有续帧数据标识
-    		messageFrame.setRsv1((byte) (bt & WebSocketMessage.RSV1));// 保留标识1
-    		messageFrame.setRsv2((byte) (bt & WebSocketMessage.RSV2));// 保留标识2
-    		messageFrame.setRsv3((byte) (bt & WebSocketMessage.RSV3));// 保留标识3
-    		messageFrame.setOpcode((byte) (bt & WebSocketMessage.OPCODE));//标识数据的格式，以及帧的控制，如：01标识数据内容是 文本，08标识：要求远端去关闭当前连接。 
+    		messageFrame.setFin((byte) (bt & ClustersMessage.FIN));// 后面是否有续帧数据标识
+    		messageFrame.setRsv1((byte) (bt & ClustersMessage.RSV1));// 保留标识1
+    		messageFrame.setRsv2((byte) (bt & ClustersMessage.RSV2));// 保留标识2
+    		messageFrame.setRsv3((byte) (bt & ClustersMessage.RSV3));// 保留标识3
+    		messageFrame.setOpcode((byte) (bt & ClustersMessage.OPCODE));//标识数据的格式，以及帧的控制，如：01标识数据内容是 文本，08标识：要求远端去关闭当前连接。 
 
     		bt = headers[1];
-    		messageFrame.setMask((byte) (bt & WebSocketMessage.MASK));// 是否mask标识
+    		messageFrame.setMask((byte) (bt & ClustersMessage.MASK));// 是否mask标识
     		
     		/*如果小于126 表示后面的数据长度是 [Payload len] 的值。（最大125byte） 
               等于 126 表示之后的16 bit位的数据值标识数据的长度。（最大65535byte） 
               等于 127 表示之后的64 bit位的数据值标识数据的长度。（一个有符号长整型的最大值）*/
-    		int dataLen = bt & WebSocketMessage.PAYLOADLEN;// 数据长度位数
+    		int dataLen = bt & ClustersMessage.PAYLOADLEN;// 数据长度位数
 
-    		if (dataLen == WebSocketMessage.HAS_EXTEND_DATA) {// read next 16 bit
+    		if (dataLen == ClustersMessage.HAS_EXTEND_DATA) {// read next 16 bit
     			buffer.get(headers, 0, 2);// 读取2位数字
     			bt = headers[0];
     			b2 = headers[1];
     			messageFrame.setDateLength(CoderUtils.toShort((byte)bt, (byte)b2));
-    		} else if (dataLen == WebSocketMessage.HAS_EXTEND_DATA_CONTINUE) {// read next 32 bit
+    		} else if (dataLen == ClustersMessage.HAS_EXTEND_DATA_CONTINUE) {// read next 32 bit
     			buffer.get(headers, 0, 8);// 读取8位数字
     			messageFrame.setDateLength(CoderUtils.toLong(headers));
     		} else {
@@ -285,9 +276,9 @@ public class WebSocketDecoder extends DecoderHandler {
 	 * <li>修改日期：
 	 * @throws UnsupportedEncodingException 
 	 */
-	private WebSocketRequest parserRequest(String requestData) throws UnsupportedEncodingException{		
+	private ClustersRequest parserRequest(String requestData) throws UnsupportedEncodingException{		
 			// 解析握手信息
-			WebSocketRequest requestInfo = new WebSocketRequest();
+			ClustersRequest requestInfo = new ClustersRequest();
 			
 			String[] requestDatas = requestData.split("\r\n");
 			
@@ -296,33 +287,15 @@ public class WebSocketDecoder extends DecoderHandler {
 			}
 			
 			String line = requestDatas[0];
-	        String[] requestLine = line.split(" ");
-	        if (requestLine.length < 2){
-	        	log.info("Wrong Request-Line format: " + line);
-	            return null;
-	        }
-	        
-	        requestInfo.setRequestUri(requestLine[1]);
+			if(!line.equalsIgnoreCase(ClustersConstants.CLUSTERS)){
+				return null;
+			}	       
 	        
 	        for(int i = 1; i < requestDatas.length; ++i){
 	        	// 解析单条请求信息        	
 	        	line = requestDatas[i];
 	        	
-	        	// 如果获取到空行，则读取后面的内容信息
-	        	if(line.equalsIgnoreCase(Constants.BLANK)){// 版本0---3放到消息体中的
-	        		if((i + 1) < requestDatas.length){// 有发送内容到服务器端
-	        			line = requestDatas[i + 1] + "00000000";
-	        			byte[] token = line.getBytes();//.substring(0, 8).getBytes(Utf8Coder.UTF8);
-	        			try {
-	        				requestInfo.setDigest(this.makeResponseToken(requestInfo, token));// 设置签名
-						} catch (NoSuchAlgorithmException e) {
-							e.printStackTrace();
-						}
-	        			break;
-	        		}
-	        	}
-	        	
-	        	String[] parts = line.split(": ", 2);
+	        	String[] parts = line.split(":", 2);
 	            if (parts.length != 2){
 	            	log.info("Wrong field format: " + line);
 	                return null;
@@ -330,84 +303,19 @@ public class WebSocketDecoder extends DecoderHandler {
 	            
 	            String name = parts[0].toLowerCase();
 	            String value = parts[1].toLowerCase();
-	
-	            if (name.equals("upgrade")) {
-	                if (!value.equals("websocket")){
-	                	log.info("Wrong value of upgrade field: " + line);
-	                	return null;
-	                }
-	                requestInfo.setUpgrade(true);
-	            }else if(name.equals("connection")) {
-	                if (!value.equals("upgrade")){
-	                	log.info("Wrong value of connection field: " + line);
-	                }
-	                requestInfo.setConnection(true);
-	            }else if(name.equals("host")){
+	            
+	            if(name.equals("host")){
 	                requestInfo.setHost(value);
-	            }else if (name.equals("origin")){
-	                requestInfo.setOrigin(value);
-	            }else if((name.equals("sec-websocket-key1")) || (name.equals("sec-websocket-key2"))){
-	            	log.info(name + ":" + value);
-	            	Integer spaces = new Integer(0);
-	                Long number = new Long(0);
-	                for (Character c : parts[1].toCharArray()){
-	                    if (c.equals(' '))
-	                        ++spaces;
-	                    if (Character.isDigit(c)){
-	                        number *= 10;
-	                        number += Character.digit(c, 10);
-	                    }
-	                }
-	                number /= spaces;
-	                
-	                if (name.endsWith("key1")){
-	                    requestInfo.setKey1(number);
-	                }else{
-	                    requestInfo.setKey2(number);
-	                }
-	            }else if(name.equals("cookie")){
-	                requestInfo.setCookie(value);
-	            }else if(name.equals("sec-websocket-key")){// 版本4以及以上放到sec key中
+	            }else if(name.equals("key")){// 获取随机码
 	            	requestInfo.setDigest(getKey(parts[1]));// 设置签名
-	            }else if(name.equals("sec-websocket-version")){//获取安全控制版本
-	            	requestInfo.setSecVersion(Integer.valueOf(value));// 设置版本
-	            }else if(name.equals("sec-websocket-extensions")){//获取安全控制版本	            	
-	            	log.info(value);
+	            }else if(name.equals("protocol")){//获取安全控制版本
+	            	requestInfo.setProtocol(value);// 设置协议
 	            }else{
 	            	log.info("Unexpected header field: " + line);
 	            }
 	        }
 	        
 	        return requestInfo;
-	}
-	
-	/**
-	 * 
-	 * <li>方法名：makeResponseToken
-	 * <li>@param requestInfo
-	 * <li>@param token
-	 * <li>@return
-	 * <li>@throws NoSuchAlgorithmException
-	 * <li>返回类型：byte[]
-	 * <li>说明：
-	 * <li>创建人：CshBBrain;技术博客：http://cshbbrain.iteye.com/
-	 * <li>创建日期：2012-8-21
-	 * <li>修改人： 
-	 * <li>修改日期：
-	 */
-	protected String makeResponseToken(WebSocketRequest requestInfo, byte[] token)throws NoSuchAlgorithmException {
-		MessageDigest md5digest = MessageDigest.getInstance("MD5");
-		for(Integer i = 0; i < 2; ++i){
-			byte[] asByte = new byte[4];
-			long key = (i == 0) ? requestInfo.getKey1().intValue() : requestInfo.getKey2().intValue();
-			asByte[0] = (byte) (key >> 24);
-			asByte[1] = (byte) ((key << 8) >> 24);
-			asByte[2] = (byte) ((key << 16) >> 24);
-			asByte[3] = (byte) ((key << 24) >> 24);
-			md5digest.update(asByte);
-		}
-		md5digest.update(token);		
-		return new String(md5digest.digest());
 	}
 	
 	/**
@@ -422,37 +330,56 @@ public class WebSocketDecoder extends DecoderHandler {
 	 * <li>修改人： 
 	 * <li>修改日期：
 	 */
-	public String generateHandshake(WebSocketRequest requestInfo) throws UnsupportedEncodingException{
-		StringBuilder sb = new StringBuilder();
-		if(requestInfo.getSecVersion() < 4){// 版本0--3
-		sb.append("HTTP/1.1 101 WebSocket Protocol Handshake").append("\r\n")
-		.append("Upgrade: WebSocket").append("\r\n")
-		.append("Connection: Upgrade").append("\r\n")
-		.append("Sec-WebSocket-Origin: ").append(requestInfo.getOrigin()).append("\r\n")
-		.append("Sec-WebSocket-Location: ws://").append(requestInfo.getHost()).append(requestInfo.getRequestUri()).append("\r\n");
+	public String generateHandshake(ClustersRequest requestInfo) throws UnsupportedEncodingException{
+		StringBuilder sb = new StringBuilder();		
+		sb.append(ClustersConstants.CLUSTERS).append("\r\n")			
+		.append(ClustersConstants.HOST).append(":").append(requestInfo.getHost()).append("\r\n")
+		.append(ClustersConstants.ACCEPT).append(":").append(requestInfo.getDigest()).append("\r\n")
+		.append(ClustersConstants.PROTOCOL).append(":").append(requestInfo.getProtocol()).append("\r\n");
 		
-		if(requestInfo.getCookie() != null){
-			sb.append("cookie: ").append(requestInfo.getCookie()).append("\r\n");
-		}
-		
-		sb.append("\r\n"); // 写入空行
-		
-		sb.append(requestInfo.getDigest());
-		//ByteBuffer buffer = ByteBuffer.allocate(sb.length() + requestInfo.getDigest().length); 		
-		//buffer.put(sb.toString().getBytes(Utf8Coder.UTF8)).put(requestInfo.getDigest());
-		}else{// 大于等于版本4
-			sb.append("HTTP/1.1 101 Switching Protocols").append("\r\n")
-			.append("Upgrade: websocket").append("\r\n")
-			.append("Connection: Upgrade").append("\r\n")
-			.append("Sec-WebSocket-Accept: ").append(requestInfo.getDigest()).append("\r\n")
-			.append("Sec-WebSocket-Origin: ").append(requestInfo.getOrigin()).append("\r\n")
-			.append("Sec-WebSocket-Location: ws://").append(requestInfo.getHost()).append(requestInfo.getRequestUri()).append("\r\n");
-			//.append("Sec-WebSocket-Protocol: chat").append("\r\n");
-			
-			sb.append("\r\n"); // 写入空行			
-		}
 		log.info("the response: " + sb.toString());
 		
 		return sb.toString();
-	}	
+	}
+	
+	/**
+	 * 
+	 * <li>方法名：processClientHandShak
+	 * <li>@param sockector
+	 * <li>@param msg
+	 * <li>@return
+	 * <li>返回类型：Boolean
+	 * <li>说明：
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-22
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	public void processClientHandShak(Client sockector, String msg){
+		
+		String[] requestDatas = msg.split("\r\n");		
+		if(requestDatas.length < 0){
+			return;
+		}
+		
+		ClustersHandShak handShak = sockector.<ClustersHandShak>getHandShakObject();
+		String line = requestDatas[0];
+		if(!line.equalsIgnoreCase(ClustersConstants.CLUSTERS)){// 检查协议名 是否为CshBBrain
+			return;
+		}
+		
+		if(!requestDatas[1].equalsIgnoreCase(handShak.getHost())){// 检查host是否为本机发出时附带的host
+			return;
+		}
+		
+		if(!requestDatas[2].equals(getKey(handShak.getKey()))){// 检查验证key是否正确
+			return;
+		}
+		
+		if(!requestDatas[3].equalsIgnoreCase(ClustersConstants.PROTOCOL)){// 检查协议是否正确
+			return;
+		}
+        
+		sockector.setHandShak(true);// 握手验证正确，完成握手处理        
+	}
 }

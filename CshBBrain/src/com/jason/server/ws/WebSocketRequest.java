@@ -12,8 +12,8 @@ import org.apache.commons.logging.LogFactory;
  * <li>修改人： 
  * <li>修改日期：
  */
-class RequestInfo{
-	private static Log log = LogFactory.getLog(RequestInfo.class);// 日志记录器
+class WebSocketRequest{
+	private static Log log = LogFactory.getLog(WebSocketRequest.class);// 日志记录器
 	private String requestUri;// 请求地址
     private String host;// 机器地址 
     private String origin;// 源地址

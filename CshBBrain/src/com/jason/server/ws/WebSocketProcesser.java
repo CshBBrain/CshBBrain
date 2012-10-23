@@ -68,8 +68,8 @@ import com.jason.server.ws.biz.Service;
  * <li>修改人： 
  * <li>修改日期：
  */
-public class Processer implements ProcessHandler {
-	private static Log log = LogFactory.getLog(Processer.class);// 日志记录器
+public class WebSocketProcesser extends ProcessHandler {
+	private static Log log = LogFactory.getLog(WebSocketProcesser.class);// 日志记录器
 	public void process(Client sockector){
 		ConcurrentLinkedQueue<HashMap<String,String>> msgs = sockector.getBizObjects();
 		if(msgs.isEmpty()){

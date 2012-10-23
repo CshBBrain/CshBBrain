@@ -18,7 +18,7 @@ import com.jason.server.Client;
  * <li>修改人： 
  * <li>修改日期：
  */
-public interface CoderHandler {
+public abstract class CoderHandler {
 	/**
 	 * 
 	 * <li>方法名：process
@@ -30,5 +30,20 @@ public interface CoderHandler {
 	 * <li>修改人： 
 	 * <li>修改日期：
 	 */
-	public void process(Client sockector);
+	public abstract void process(Client sockector);
+	
+	/**
+	 * 
+	 * <li>方法名：handShak
+	 * <li>@param sockector
+	 * <li>返回类型：void
+	 * <li>说明：执行握手处理的业务，主要用于连接的客户端向服务器端发起握手处理
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-22
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	public void handShak(Client sockector){
+		
+	}
 }

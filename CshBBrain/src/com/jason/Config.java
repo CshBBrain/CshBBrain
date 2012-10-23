@@ -122,6 +122,6 @@ public class Config {
 			return false;
 		}
 		
-		return Integer.valueOf(str.trim()) > 0 ? false : true;
+		return Integer.valueOf(str.trim()) > 0 ? true : false;
 	}
 }

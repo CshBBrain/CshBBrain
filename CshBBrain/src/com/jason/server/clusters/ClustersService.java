@@ -1,0 +1,68 @@
+/**
+ * <li>文件名：Service.java
+ * <li>说明：
+ * <li>创建人：CshBBrain;技术博客：http://cshbbrain.iteye.com/
+ * <li>创建日期：2011-11-27
+ * <li>修改人： 
+ * <li>修改日期：
+ */
+package com.jason.server.clusters;
+
+import java.util.HashMap;
+
+import com.jason.server.Client;
+import com.jason.server.Response;
+import com.jason.util.MyStringUtil;
+
+/**
+ * <li>类型名称：
+ * <li>说明：业务处理类
+ * <li>创建人：CshBBrain;技术博客：http://cshbbrain.iteye.com/
+ * <li>创建日期：2011-11-27
+ * <li>修改人： 
+ * <li>修改日期：
+ */
+public class ClustersService{	
+	private static ClustersService service = new ClustersService();// 服务单实例;// 服务单实例	
+	
+	public static ClustersService getInstance(){
+		return service;
+	}
+	
+	private ClustersService(){}
+		
+	/**
+	 * 
+	 * <li>方法名：service
+	 * <li>@param requestData
+	 * <li>@return
+	 * <li>返回类型：ResponseMessage
+	 * <li>说明：业务处理入口方法，对各种接口的请求进行处理
+	 * <li>创建人：CshBBrain;技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2011-12-5
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	public Response service(Client sockector, HashMap<String, String> requestData){
+		if(requestData == null){
+			return null;
+		}
+		
+		Response responseMessage = null;
+		
+		try{
+			if(!MyStringUtil.isBlank(requestData.get(ClustersConstants.HANDSHAKE))){
+				responseMessage = Response.msgOnlyBody(requestData.get(ClustersConstants.FILED_MSG));
+			}else{
+				responseMessage = Response.msgOnlyBody("Hello," + requestData.get(ClustersConstants.FILED_MSG));				
+			}
+		}catch(Exception e){
+			e.printStackTrace();
+			responseMessage = Response.msgOnlyBody("500处理失败了");			
+		}
+		
+		return responseMessage;
+	}
+	
+	
+}

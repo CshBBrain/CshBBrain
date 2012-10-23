@@ -6,12 +6,11 @@
  * <li>修改人： 
  * <li>修改日期：
  */
-package com.jason.server.ws;
+package com.jason.server.clusters;
 
 import java.io.IOException;
 
 import com.jason.server.MasterServer;
-import com.jason.server.ws.biz.BroadThread;
 import com.jason.server.ws.biz.stock.StockSpider;
 
 /**
@@ -22,7 +21,7 @@ import com.jason.server.ws.biz.stock.StockSpider;
  * <li>修改人： 
  * <li>修改日期：
  */
-public class StockServer{
+public class ClustersServer{
 
 	/**
 	 * <li>方法名：main
@@ -36,7 +35,7 @@ public class StockServer{
 	 */
 	public static void main(String[] args){
 		try{
-			new MasterServer(new WebSocketCoder(), new WebSocketDecoder(), new WebSocketProcesser());
+			new MasterServer(new ClustersCoder(), new ClustersDecoder(), new ClustersProcesser());
 			StockSpider.getInstance();
 		}catch(IOException e){		
 			e.printStackTrace();
