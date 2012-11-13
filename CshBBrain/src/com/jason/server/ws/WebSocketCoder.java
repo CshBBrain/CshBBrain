@@ -71,20 +71,23 @@ import com.jason.util.CoderUtils;
 public class WebSocketCoder extends CoderHandler {
 	private static Log log = LogFactory.getLog(WebSocketCoder.class);// 日志记录器
 	public void process(Client sockector) {
-		Iterator<Response> msgs = sockector.getResponseMsgs().iterator();		
-		while(msgs.hasNext()){
-			Response msg = msgs.next();
-			
+		Response msg = sockector.getResponseMsgsNotCode().poll();		
+		while(msg != null){			
 			try{
 				if(sockector.isHandShak()){
-					broundMsg(sockector,msg);
+					broundMsg(sockector,msg);					
 				}else{
 					sockector.setHandShak(true);//握手已经完成
 				}
+				
+				msg.bufferedContent();// 缓存内容
+				sockector.getResponseMsgs().add(msg);
 			}catch(IOException e){
 				e.printStackTrace();
 			}// 创建响应头部信息
-		}
+			
+			msg = sockector.getResponseMsgsNotCode().poll();
+		}		
 	}
 	
 	/**
@@ -160,6 +163,7 @@ public class WebSocketCoder extends CoderHandler {
 		}*/
 		
 		msg.appendBytes(msgs);
+		msg.resetCurrentBuffer();
 		
 		sockector.getRequestWithFile().clear();// 清理每次连接交互的数据
 	}

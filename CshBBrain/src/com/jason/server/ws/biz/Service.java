@@ -10,6 +10,9 @@ package com.jason.server.ws.biz;
 
 import java.util.HashMap;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
 import com.jason.server.Client;
 import com.jason.server.Response;
 import com.jason.util.MyStringUtil;
@@ -22,7 +25,8 @@ import com.jason.util.MyStringUtil;
  * <li>修改人： 
  * <li>修改日期：
  */
-public class Service{	
+public class Service{
+	private static Log log = LogFactory.getLog(Service.class);// 日志记录器
 	private static Service service = new Service();// 服务单实例;// 服务单实例	
 	
 	public static Service getInstance(){
@@ -48,8 +52,8 @@ public class Service{
 			return null;
 		}
 		
+		log.info(requestData.get(Constants.FILED_MSG));
 		Response responseMessage = null;
-		
 		try{
 			if(!MyStringUtil.isBlank(requestData.get(Constants.HANDSHAKE))){
 				responseMessage = Response.msgOnlyBody(requestData.get(Constants.FILED_MSG));

@@ -8,7 +8,10 @@
  */
 package com.jason.server.hander;
 
+import java.io.IOException;
+
 import com.jason.server.Client;
+import com.jason.server.Response;
 
 /**
  * <li>类型名称：
@@ -44,6 +47,10 @@ public abstract class CoderHandler {
 	 * <li>修改日期：
 	 */
 	public void handShak(Client sockector){
+		
+	}
+	
+	public void broundMsg(Client sockector, Response msg) throws IOException{
 		
 	}
 }

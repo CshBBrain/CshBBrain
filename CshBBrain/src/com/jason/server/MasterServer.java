@@ -482,11 +482,23 @@ public class MasterServer {
 			try{
 				Response msg = broadMessages.take();//获取广播消息
 				Iterator<Client> it = this.clients.values().iterator();
+				boolean isCode = false;			
 				while(it.hasNext()){
 					//log.info(msg.getBody());
 					Client socketer = it.next();
-					socketer.sendMessage(msg);
+					if(!isCode){
+						isCode = true;
+						msg.codeMsg(socketer);
+					}
+					
+					socketer.addBroadMsg(Response.msgRespose(msg));
+					try{
+						workers.take().processResponse(socketer);
+					}catch(Exception e){
+						e.printStackTrace();
+					}
 				}
+				
 			}catch(InterruptedException e){
 				e.printStackTrace();
 			}

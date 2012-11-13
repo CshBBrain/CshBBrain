@@ -30,9 +30,12 @@ public class Client{
 	private SelectionKey key;// 客户端通道key
 	private boolean handShak = false;// 是否已经握手
 	private ConcurrentLinkedQueue<Response> responseMsgs;// 发送给客户端的消息
+	private ConcurrentLinkedQueue<Response> responseMsgsNotCode;// 发送给客户端的消息	
 	private ConcurrentLinkedQueue<String> requestMsgs;// 客户端发送的请求消息
 	private ConcurrentLinkedQueue<HashMap<String, String>> bizObjects;// 解码客户端请求所得到的业务对象
 	private AtomicBoolean inRead = new AtomicBoolean(false);// 读取通信信号量
+	private AtomicBoolean inWrite = new AtomicBoolean(false);// 回写通信信号量
+	private AtomicBoolean isInterestWrite = new AtomicBoolean(false);// 回写事件注册通信信号量
 	private ReadWriteMonitor inputMonitorWorker;
 	private Integer readCount = 0;// 读取次数
 	private boolean preBlank = false;//上次读取为空读
@@ -62,6 +65,15 @@ public class Client{
 		return (T)handShakObject;
 	}
 
+	public ConcurrentLinkedQueue<Response> getResponseMsgsNotCode() {
+		return responseMsgsNotCode;
+	}
+
+	public void setResponseMsgsNotCode(
+			ConcurrentLinkedQueue<Response> responseMsgsNotCode) {
+		this.responseMsgsNotCode = responseMsgsNotCode;
+	}
+	
 	public void setHandShakObject(Object handShakObject) {
 		this.handShakObject = handShakObject;
 	}
@@ -120,6 +132,7 @@ public class Client{
 	    this.sockectServer = sockectServer; 
 		this.key = key;
 		this.responseMsgs = new ConcurrentLinkedQueue<Response>();// 发送给客户端的消息
+		this.responseMsgsNotCode = new ConcurrentLinkedQueue<Response>();// 发送给客户端的消息
 		this.requestMsgs =  new ConcurrentLinkedQueue<String>();// 客户端发送的消息
 		this.bizObjects =  new ConcurrentLinkedQueue<HashMap<String, String>>();// 客户请求业务处理对象
 		this.inputMonitorWorker = inputMonitorWorker;
@@ -153,8 +166,12 @@ public class Client{
 	 * <li>修改日期：
 	 */
 	public void addResponseMsg(Response msg){
+		this.responseMsgsNotCode.add(msg);
+	}
+	
+	public void addBroadMsg(Response msg){
 		this.responseMsgs.add(msg);
-	}	
+	}
 	
 	/**
 	 * 
@@ -167,8 +184,7 @@ public class Client{
 	 * <li>修改人： 
 	 * <li>修改日期：
 	 */
-	public void sendMsgs(){
-		//this.coderHandler.process(this);// 协议编码处理
+	/*public void sendMsgs(){
 		if(MasterServer.keepConnect){
 			try{
 				Response msg = this.responseMsgs.peek();// 获取第一个信息				
@@ -221,6 +237,93 @@ public class Client{
 			}catch(Exception e){// 处理异常
 				e.printStackTrace();
 				this.close();
+			}
+		}
+	}*/
+	
+	public void sendMsgs(){
+		if(this.inWrite.compareAndSet(false, true)){
+			if(MasterServer.keepConnect){
+				try{
+					Response msg = this.responseMsgs.peek();// 获取第一个信息
+					boolean isStopWrite = false;// 是否停止发送数据
+					while(msg != null){
+						if(msg.isException()){// 存在需要处理的回写，但回写次数超过10万次，关闭链接
+							log.info("call count max 100000 per msg");
+							this.close();
+							isStopWrite = true;// 回写超过次数限制，退出循环
+						}else{
+							Integer resulst = msg.write(this);// 写入数据
+							switch(resulst){
+							case -1:// 出现异常关闭连接
+								log.info("写入数据时出现异常，连接关闭");
+								this.responseMsgs.clear();
+								isStopWrite = true;// 连接关闭，退出循环
+								break;
+							case 1:// 完成所有数据写入
+								this.responseMsgs.poll();// 移除第一个信息
+								msg = this.responseMsgs.peek();// 获取第一个信息
+								
+								if(msg == null){// 没有可以输出的内容，注销输出事件监听
+									this.unregisteWrite();
+									this.inWrite.set(false);
+								}
+								break;
+							case 2:// 数据没有写入完，等待下次写入
+								this.registeWrite();
+								isStopWrite = true;// 缓冲区已满，退出循环
+								break;
+							}						
+						}
+						if(isStopWrite){// 要么连接关闭，要么连接缓冲区已满，退出循环
+							break;
+						}
+					}
+				}catch(Exception e){// 处理异常
+					e.printStackTrace();
+					this.close();
+				}
+			}else{// 处理不保存连接的发送方式
+				try{
+					Response msg = this.responseMsgs.peek();// 获取第一个信息
+					boolean isStopWrite = false;// 是否停止发送数据
+					while(msg != null){
+						if(msg.isException()){// 存在需要处理的回写，但回写次数超过10万次，关闭链接
+							log.info("call count max 100000 per msg");
+							this.close();
+							isStopWrite = true;// 回写超过限制的次数，退出循环
+						}else{
+							Integer resulst = msg.write(this);// 写入数据
+							switch(resulst){
+							case -1:// 出现异常关闭连接
+								log.info("写入数据时出现异常，连接关闭");
+								this.responseMsgs.clear();
+								this.close();
+								isStopWrite = true;// 连接已关闭，退出循环
+								break;
+							case 1:// 完成所有数据写入
+								this.responseMsgs.poll();// 移除第一个信息
+								msg = this.responseMsgs.peek();// 获取第一个信息
+								
+								if(msg == null){// 没有可以输出的内容，注销输出事件监听
+									this.close();
+								}
+								break;
+							case 2:// 数据没有写入完，等待下次写入
+								this.registeWrite();
+								isStopWrite = true;// 连接缓冲区已满，退出循环
+								break;
+							}
+						}
+						
+						if(isStopWrite){// 要么连接关闭，要么连接缓冲区已满，退出循环
+							break;
+						}
+					}
+				}catch(Exception e){// 处理异常
+					e.printStackTrace();
+					this.close();
+				}
 			}
 		}
 	}
@@ -430,9 +533,10 @@ public class Client{
 	public void process(){
 		try{
 			this.processHandler.process(this);// 业务处理
-			if(!this.responseMsgs.isEmpty()){// 不为空进行写出信息
+			if(!this.responseMsgsNotCode.isEmpty()){// 不为空进行写出信息
 				this.coderHandler.process(this);// 协议编码处理
-				this.inputMonitorWorker.registeWrite(key);
+				//this.inputMonitorWorker.registeWrite(key);
+				this.sendMsgs();
 			}
 		}catch(Exception e){
 			e.printStackTrace();
@@ -452,7 +556,9 @@ public class Client{
 	 * <li>修改日期：
 	 */
 	public void registeWrite(){
-		this.inputMonitorWorker.registeWrite(key);
+		if(isInterestWrite.compareAndSet(false, true)){
+			this.inputMonitorWorker.registeWrite(key);
+		}
 	}
 
 	public boolean isHandShak() {
@@ -549,7 +655,9 @@ public class Client{
 	 * <li>修改日期：
 	 */
 	public void unregisteWrite() throws ClosedChannelException{
-		this.key.interestOps(this.key.interestOps() ^ SelectionKey.OP_WRITE);
+		if(this.isInterestWrite.compareAndSet(true, false)){
+			this.key.interestOps(this.key.interestOps() ^ SelectionKey.OP_WRITE);
+		}
 	}
 	
 	/**
@@ -713,10 +821,22 @@ public class Client{
 	 */
 	public void sendMessage(Response msg){
 		try{
-			this.responseMsgs.add(msg);
+			this.responseMsgsNotCode.add(msg);
 			this.coderHandler.process(this);// 编码消息
-			log.info(msg.getBody());
-			this.inputMonitorWorker.registeWrite(key);
+			log.info("向客户端" + this.index + "发送数据：" + msg.getBody());
+			//this.inputMonitorWorker.registeWrite(key);
+			this.sendMsgs();
+		}catch(Exception e){
+			e.printStackTrace();
+			this.close();
+		}
+	}
+	
+	
+	public void send(){
+		try{
+			//this.coderHandler.process(this);// 编码消息
+			this.sendMsgs();
 		}catch(Exception e){
 			e.printStackTrace();
 			this.close();
@@ -725,7 +845,7 @@ public class Client{
 	
 	public void sendDirectMessage(Response msg){
 		try{
-			this.responseMsgs.add(msg);
+			this.responseMsgsNotCode.add(msg);
 			this.coderHandler.process(this);// 编码消息
 			this.sendMsgs();
 		}catch(Exception e){
@@ -756,5 +876,29 @@ public class Client{
 	public void requestHandShak(){
 		this.isClient = true;// 连接的客户端
 		this.coderHandler.handShak(this);
+	}
+	
+	public CoderHandler getCoderHandler() {
+		return coderHandler;
+	}
+
+	public void setCoderHandler(CoderHandler coderHandler) {
+		this.coderHandler = coderHandler;
+	}
+
+	public DecoderHandler getDecoderHandler() {
+		return decoderHandler;
+	}
+
+	public void setDecoderHandler(DecoderHandler decoderHandler) {
+		this.decoderHandler = decoderHandler;
+	}
+
+	public ProcessHandler getProcessHandler() {
+		return processHandler;
+	}
+
+	public void setProcessHandler(ProcessHandler processHandler) {
+		this.processHandler = processHandler;
 	}
 }

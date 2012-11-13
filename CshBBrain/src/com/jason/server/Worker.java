@@ -24,7 +24,7 @@ public class Worker{
 	private static Log log = LogFactory.getLog(Worker.class);// 日志记录器
 	private static final String READ_BUFFER = "readBuffer";
 	private BlockingQueue<Worker> idleWorkers;
-	private BlockingQueue<SelectionKey> handoffBox;
+	private BlockingQueue<Object> handoffBox;
 	private Thread internalThread;//内部工作线程
 	private volatile boolean noStopRequested;
 	private final AtomicInteger threadIndex = new AtomicInteger();// 线程索引号
@@ -38,7 +38,7 @@ public class Worker{
 		
 		this.charBuffer = ByteBuffer.allocateDirect(1024 * bufferSize);// 创建读取缓冲区
 		this.idleWorkers = idleWorkers;
-		handoffBox = new ArrayBlockingQueue<SelectionKey>(1);
+		handoffBox = new ArrayBlockingQueue<Object>(1);
 		
 		noStopRequested = true;
 		
@@ -70,14 +70,19 @@ public class Worker{
 		}
 	}
 	
-	public void processResponse(SelectionKey key){
+	public void processResponse(Object key){
 		this.handoffBox.add(key);
 	}
 	
-	public void process(SelectionKey selectionKey){
-		Client key = Client.getSockector(selectionKey);
-		if(key.getMessages(charBuffer)){ // 已完成握手，从客户端读取报刊
-			key.process();// 进行业务处理
+	public void process(Object selectKey){
+		if(selectKey instanceof SelectionKey){
+			SelectionKey selectionKey = (SelectionKey)selectKey;
+			Client key = Client.getSockector(selectionKey);
+			if(key.getMessages(charBuffer)){ // 已完成握手，从客户端读取报刊
+				key.process();// 进行业务处理
+			}
+		}else if(selectKey instanceof Client){// 直接发送消息
+			((Client)selectKey).send();
 		}
 	}
 	
