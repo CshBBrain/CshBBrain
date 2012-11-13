@@ -18,6 +18,7 @@ package com.jason.server.clusters;
  * <li>修改日期：
  */
 public class ClustersConstants {
+	public static final String CLUSTERS_SPLIT_DOT = ":";// 集群协议
 	public static final String CLUSTERS = "CshBBrain";// 集群协议
 	public static final String HOST = "Host";//客户端主机
 	public static final String ACCEPT = "Accept";// 服务器端返回的验证加密串
@@ -42,4 +43,27 @@ public class ClustersConstants {
 	public static final int SPLITVERSION0 = 0;// 版本0
 	public static final int SPLITVERSION6 = 6;// 版本6
 	public static final int SPLITVERSION7 = 7;// 版本7
+	
+	// 集群的数据接口
+	public static final int CLUSTERS_REGISTE = 1;// 节点服务器注册接口
+	public static final int CLUSTERS_ADD_WORKER = 2;// 增加工作线程接口
+	public static final int CLUSTERS_REDUCE_WORKER = 3;// 减少工作线程接口
+	public static final int CLUSTERS_ADD_MONITOR = 4;// 增加读写监听线程接口
+	public static final int CLUSTERS_REDUCE_MONITOR = 5;// 减少监听线程接口
+	public static final int CLUSTERS_DISPATCH = 0;// 获取节点接口
+	public static final int CLUSTERS_XCHANGE_MASTER = 6;// 移交管理权限接口
+	public static final int CLUSTERS_XCHANGE_DATA = 31;// 节点服务器数据交换接口
+	public static final int CLUSTERS_XCHANGE_DATA_COMMAND = 32;// 节点服务器数据交换通知接口
+	
+	// 参数名称常量
+	public static final String FILED_ACTION = "action";// 操作类型
+	public static final String FILED_CONTENT = "content";// 内容信息
+	public static final String FILED_CORE_COUNT = "coreCount";// 服务器CPU内核数量
+	public static final String FILED_READER_WRITER_COUNT = "readerWriterCount";// 服务器读写监听线程
+	public static final String FILED_WORKER_COUNT = "workerCount";// 工作处理线程
+	public static final String FILED_CLIENT_COUNT = "clientCount";// 客户端连接数量
+	public static final String FILED_CLUSTERS_COUNT = "clustersCount";// 服务器集群连接数量
+	public static final String FILED_LOCAL_COUNT = "localCount";// 本地连接数量
+	public static final String FILED_PORT = "port";// 服务器客户端接入端口
+	public static final String FILED_COUNT = "count";// 数量	
 }

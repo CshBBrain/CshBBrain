@@ -123,14 +123,16 @@ public class Response {
 		}
 		
 		// 处理响应头，响应体的传输
-		ByteBuffer buffer = this.currentBufferQueue.peek();
+		ByteBuffer buffer = this.currentBufferQueue.poll();
 		if(buffer != null){
+			log.info("the postion of the data in write: " + buffer.position());
 			buffer.flip();// 反转缓存区
 				
 			while(buffer != null){
 				int transCount = 0;
 				try{
 					transCount = socketChannel.write(buffer);
+					log.info("translate size:" + transCount);
 				}catch(IOException e){
 					e.printStackTrace();
 					this.closeChannel();
@@ -145,7 +147,7 @@ public class Response {
 					this.currentBufferQueue.poll();// 从队列中删除缓冲区
 					
 					// 获取下一个缓冲区进行传输
-					buffer = this.currentBufferQueue.peek();
+					buffer = this.currentBufferQueue.poll();
 					if(buffer != null){
 						buffer.flip();// 反转缓存区
 					}
@@ -255,16 +257,18 @@ public class Response {
 	 * <li>修改人： 
 	 * <li>修改日期：
 	 */
-	private void bufferedContent(){
-		this.currentBufferQueue = new ConcurrentLinkedQueue<ByteBuffer>();// 当前正在处理的缓冲区队列
-		
-		ByteBuffer headerBuffer = processBuffered(this.header);		
-		ByteBuffer bodyBuffer = processBuffered(headerBuffer, this.body);
-		
-		if(bodyBuffer != null){
-			this.currentBufferQueue.add(bodyBuffer);
+	public void bufferedContent(){
+		if(!this.isBuffered){// 如果已经做的缓存就不做处理了
+			this.currentBufferQueue = new ConcurrentLinkedQueue<ByteBuffer>();// 当前正在处理的缓冲区队列
+			
+			ByteBuffer headerBuffer = processBuffered(this.header);		
+			ByteBuffer bodyBuffer = processBuffered(headerBuffer, this.body);
+			
+			if(bodyBuffer != null){
+				this.currentBufferQueue.add(bodyBuffer);
+			}
+			this.isBuffered = true;
 		}
-		this.isBuffered = true;
 	}
 	
 	/**
@@ -307,6 +311,7 @@ public class Response {
 		ByteBuffer buffer = this.getBuffer();
 		if(buffer.remaining() >= datas.length){// 缓冲区的空间大于数据的长度
 			buffer.put(datas);
+			log.info("the postion of the data: " + buffer.position());
 		}else{// 缓冲区的空间小于数据的长度
 			int offset = 0;// 初始相对位移为0
 			int length = buffer.remaining();// 初始传递的数据长度为缓冲区的剩余长度

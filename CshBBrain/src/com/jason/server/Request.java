@@ -15,6 +15,8 @@ import java.util.HashMap;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
+import com.jason.util.CoderUtils;
+
 /**
  * <li>类型名称：
  * <li>说明：带发送文件的请求
@@ -25,6 +27,7 @@ import org.apache.commons.logging.LogFactory;
  */
 public class Request {
 	private static Log log = LogFactory.getLog(Request.class);// 日志记录器
+	private static Integer BUFFER_LIMIT = 10 * 1000;// 10k大小
 	private FileTransfer fileReceiver; // 文件接受
 	private HashMap<String, String> requestData;// 请求参数
 	private Boolean isReadFile = false;// 是否准备读取文件
@@ -42,6 +45,29 @@ public class Request {
 	
 	private long dataPosition = 0l;// 接收数据的当前位置，从0开始接收起
 	private Object messageHeader = null;// 消息
+	private String message = null;// 临时存储的消息
+	
+	
+	public String getRequestMessage(){
+		if(byteDatas.size() == 1){// 如果长度为1的话
+			this.message = CoderUtils.decode(ByteBuffer.wrap(byteDatas.get(0)));// 直接处理返回
+		}else if(byteDatas.size() > 1){		
+			ByteBuffer buffer = null;// 缓冲区
+			if(this.dataPosition > BUFFER_LIMIT){// 收到的数据超过大小
+				buffer = ByteBuffer.allocateDirect(Integer.parseInt(String.valueOf(this.dataPosition)));
+			}else{// 收到的数据没有超过大小
+				buffer = ByteBuffer.allocate(Integer.parseInt(String.valueOf(this.dataPosition)));
+			}
+				
+			for(int i =0; i < byteDatas.size(); ++i){
+				buffer.put(byteDatas.get(i));
+			}
+			
+			this.message = CoderUtils.decode(buffer);// 直接处理返回
+		}
+		
+		return message;// 返回空串
+	}
 	
 	/**
 	 * 
@@ -66,6 +92,7 @@ public class Request {
 		this.directProcess = false;
 		this.dataPosition = 0l;
 		this.messageHeader = null;
+		this.message = null;
 	}
 	
 	/**

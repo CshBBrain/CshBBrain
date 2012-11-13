@@ -17,6 +17,7 @@ import com.jason.server.MasterServer.ReadWriteMonitor;
 import com.jason.server.hander.CoderHandler;
 import com.jason.server.hander.DecoderHandler;
 import com.jason.server.hander.ProcessHandler;
+import com.jason.util.MyStringUtil;
 
 public class Client{
 	private static Log log = LogFactory.getLog(Client.class);// 日志记录器
@@ -45,13 +46,15 @@ public class Client{
 	private String protocolVersion = "0";//协议版本
 	private Object session;//连接会话对象，由开发者自己定义使用
 	private Object handShakObject;// 握手处理对象
-	private Integer index;// 客户端在索引
+	private Object index;// 客户端在索引
+	private String routeAddress = null;// 远程地址
+	private String localAddress = null;// 本地地址
 	
-	public Integer getIndex() {
+	public Object getIndex() {
 		return index;
 	}
 
-	public void setIndex(Integer index) {
+	public void setIndex(Object index) {
 		this.index = index;
 	}
 
@@ -165,7 +168,7 @@ public class Client{
 	 * <li>修改日期：
 	 */
 	public void sendMsgs(){
-		this.coderHandler.process(this);// 协议编码处理
+		//this.coderHandler.process(this);// 协议编码处理
 		if(MasterServer.keepConnect){
 			try{
 				Response msg = this.responseMsgs.peek();// 获取第一个信息				
@@ -283,14 +286,17 @@ public class Client{
 			int dataLength = 0;
 			do{// 读取客户端请求的数据并解码					
 				dataLength = socketChannel.read(byteBuffer);				
-				if(dataLength > 0){
+				if(dataLength == -1){// 客户端已经关闭连接的情况
+					log.info("客户端已经关闭");
+					this.close();					
+				}else if(dataLength > 0){// 处理读取到数据的情况
 					byteBuffer.flip();
 					this.decoderHandler.process(byteBuffer,this);// 解码处理				
 					byteBuffer.clear();					
 					readSuccess = true;
 					this.readDataFlag = true;// 将读取数据标识设置为真
 					this.preBlank = false;// 上次不为空读
-				}else{
+				}else{// 处理空读的情况
 					if(this.preBlank){
 						++this.readCount;
 					}
@@ -423,8 +429,11 @@ public class Client{
 	 */
 	public void process(){
 		try{
-			this.processHandler.process(this);// 业务处理			
-			this.inputMonitorWorker.registeWrite(key);
+			this.processHandler.process(this);// 业务处理
+			if(!this.responseMsgs.isEmpty()){// 不为空进行写出信息
+				this.coderHandler.process(this);// 协议编码处理
+				this.inputMonitorWorker.registeWrite(key);
+			}
 		}catch(Exception e){
 			e.printStackTrace();
 			this.close();
@@ -615,7 +624,47 @@ public class Client{
 	public String getIp(){
 		return ((SocketChannel)this.key.channel()).socket().getInetAddress().getHostAddress();
 	}
+	
+	/**
+	 * 
+	 * <li>方法名：getAddress
+	 * <li>@return
+	 * <li>返回类型：String
+	 * <li>说明：获取连接另外一端的地址
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-28
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	public String getRouteAddress(){
+		if(MyStringUtil.isBlank(this.routeAddress)){
+			int port = ((SocketChannel)this.key.channel()).socket().getPort();
+			this.routeAddress = (((SocketChannel)this.key.channel()).socket().getInetAddress().getHostAddress() + ":" +port);
+		}
+		
+		return this.routeAddress;
+	}
 
+	/**
+	 * 
+	 * <li>方法名：getLocalAddress
+	 * <li>@return
+	 * <li>返回类型：String
+	 * <li>说明：获取连接的本端地址
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-28
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	public String getLocalAddress(){		
+		if(MyStringUtil.isBlank(this.localAddress)){
+			int port = ((SocketChannel)this.key.channel()).socket().getLocalPort();
+			this.localAddress = (((SocketChannel)this.key.channel()).socket().getLocalAddress().getHostAddress() + ":" +port);
+		}
+		
+		return this.localAddress;
+	}
+	
 	public AtomicBoolean getInRead() {
 		return inRead;
 	}
@@ -665,6 +714,7 @@ public class Client{
 	public void sendMessage(Response msg){
 		try{
 			this.responseMsgs.add(msg);
+			this.coderHandler.process(this);// 编码消息
 			log.info(msg.getBody());
 			this.inputMonitorWorker.registeWrite(key);
 		}catch(Exception e){
@@ -676,6 +726,7 @@ public class Client{
 	public void sendDirectMessage(Response msg){
 		try{
 			this.responseMsgs.add(msg);
+			this.coderHandler.process(this);// 编码消息
 			this.sendMsgs();
 		}catch(Exception e){
 			e.printStackTrace();

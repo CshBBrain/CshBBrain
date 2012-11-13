@@ -167,6 +167,18 @@
 
 function websocket(url,stockid,scrolltxt){
 	var socket = new WebSocket(url); 
+	
+	socket.onclose = function(e){
+		alert("is close");
+	}
+
+	socket.onerror = function(e){
+		alert("error " + e);
+	}
+
+	socket.onopen = function(e){
+		alert("is open");
+	}
 
 	socket.onmessage = function(event) {
 		var stock = window.JSON.parse(event.data);

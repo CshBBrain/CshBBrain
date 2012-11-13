@@ -174,7 +174,7 @@ public class ClustersDecoder extends DecoderHandler {
     		}
     	}
     	
-    	if(!requestData.readFinish()){// 是否读取完数据
+    	if(!requestData.readFinish()){// 是否读取完数据,读取完毕对数据进行处理
     		int dataLength = buffer.limit() - buffer.position();
     		byte[] datas = new byte[dataLength];
     		buffer.get(datas);
@@ -194,13 +194,15 @@ public class ClustersDecoder extends DecoderHandler {
     		try{
 				String a = new String(datas,"utf-8");
 				log.info("jason,the msg is : " + a);
+				/*requestData.getByteDatas();
 				
 				HashMap<String,String> data = new HashMap<String,String>();
 				sockector.getRequestWithFile().setRequestData(data);
-				data.put(Constants.FILED_MSG, a);
-				
-			}catch(UnsupportedEncodingException e){
-				e.printStackTrace();
+				data.put(Constants.FILED_MSG, a);*/
+				// 对数据进行处理
+				sockector.getRequestWithFile().setRequestData(MyStringUtil.parseKeyValue(requestData.getRequestMessage()));				
+			}catch(Exception e){
+				log.info(e.getMessage());// 日志消息
 			}
     	}    	
 	}
@@ -358,7 +360,7 @@ public class ClustersDecoder extends DecoderHandler {
 	public void processClientHandShak(Client sockector, String msg){
 		
 		String[] requestDatas = msg.split("\r\n");		
-		if(requestDatas.length < 0){
+		if(requestDatas.length < 4){
 			return;
 		}
 		
@@ -368,15 +370,19 @@ public class ClustersDecoder extends DecoderHandler {
 			return;
 		}
 		
-		if(!requestDatas[1].equalsIgnoreCase(handShak.getHost())){// 检查host是否为本机发出时附带的host
+		String[] keyValue = requestDatas[1].split(ClustersConstants.CLUSTERS_SPLIT_DOT);
+		
+		if(keyValue.length < 2 || !keyValue[1].equalsIgnoreCase(handShak.getHost())){// 检查host是否为本机发出时附带的host
 			return;
 		}
 		
-		if(!requestDatas[2].equals(getKey(handShak.getKey()))){// 检查验证key是否正确
+		keyValue = requestDatas[2].split(ClustersConstants.CLUSTERS_SPLIT_DOT);
+		if(keyValue.length < 2 || !keyValue[1].equals(getKey(handShak.getKey()))){// 检查验证key是否正确
 			return;
 		}
 		
-		if(!requestDatas[3].equalsIgnoreCase(ClustersConstants.PROTOCOL)){// 检查协议是否正确
+		keyValue = requestDatas[3].split(ClustersConstants.CLUSTERS_SPLIT_DOT);
+		if(keyValue.length < 2 || !keyValue[1].equalsIgnoreCase(ClustersConstants.PROTOCOL)){// 检查协议是否正确
 			return;
 		}
         

@@ -80,6 +80,7 @@ public class ClustersCoder extends CoderHandler {
 			try{
 				if(sockector.isHandShak()){
 					broundMsg(sockector,msg);
+					msg.bufferedContent();// 缓存内容
 				}else{
 					if(!sockector.isClient()){
 						sockector.setHandShak(true);//握手已经完成

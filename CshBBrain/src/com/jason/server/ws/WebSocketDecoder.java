@@ -208,6 +208,9 @@ public class WebSocketDecoder extends DecoderHandler {
 				sockector.getRequestWithFile().setRequestData(data);
 				data.put(Constants.FILED_MSG, a);
 				
+				// 待处理的逻辑
+				//sockector.getRequestWithFile().setRequestData(MyStringUtil.parseKeyValue(requestData.getRequestMessage()));
+				
 			}catch(UnsupportedEncodingException e){
 				e.printStackTrace();
 			}

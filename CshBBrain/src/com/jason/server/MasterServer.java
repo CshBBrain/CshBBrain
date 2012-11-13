@@ -73,11 +73,14 @@ public class MasterServer {
 	private ClustersCoder clustersCoder;// 集群编码处理器
 	private ClustersDecoder clustersDecoder;// 集群解码处理器
 	private ClustersProcesser clustersProcesser;// 集群处理器
+	private Client localClient;// 连接到集群服务器的客户端
 	
 	private static volatile LinkedBlockingQueue<Response> broadMessages = new LinkedBlockingQueue<Response>();// 广播消息队列 
 	private String stockData;// 股指数据，多个股指之间用逗号分隔
 	
-	private ConcurrentHashMap<Integer, Client> clients = new ConcurrentHashMap<Integer, Client>();// 客户端链接映射表
+	private ConcurrentHashMap<Object, Client> clients = new ConcurrentHashMap<Object, Client>();// 客户端链接映射表
+	private ConcurrentHashMap<Object, Client> clustersClients = new ConcurrentHashMap<Object, Client>();// 集群服务上的所有节点服务器客户端链接映射表
+	private ConcurrentHashMap<Object, Client> localClients = new ConcurrentHashMap<Object, Client>();// 连接到其他非管理服务器上的所有本地链接映射表
 	
 	private final AtomicInteger connectIndex = new AtomicInteger();// 连接序号
 	private final AtomicInteger threadIndex = new AtomicInteger();// 线程索引号
@@ -93,6 +96,10 @@ public class MasterServer {
 	
 	private Thread connectMonitor;// 连接处理线程
 	private Thread clustersMonitor;// 集群连接处理线程
+	
+	private int coreCount = 1;// CPU内核数量
+	private int readerWriterCount = 2;// 读写监听线程数量
+	private int workerCount = 1;// 工作线程数量
 
 	private ArrayList<ReadWriteMonitor> readWriteMonitors;// 客户发送请求监督程序
 	
@@ -190,15 +197,19 @@ public class MasterServer {
 		this.decoderHandler = decoderHandler;
 		this.processHandler = processHandler;
 		
-		this.workers = new ArrayBlockingQueue<Worker>(Runtime.getRuntime().availableProcessors() * requestWorker);
-		this.workersList = new ArrayList<Worker>(Runtime.getRuntime().availableProcessors() * requestWorker);//响应处理线程列表
+		this.coreCount = Runtime.getRuntime().availableProcessors();
+		this.readerWriterCount = coreCount * monitorWorker;
+		this.workerCount = coreCount * requestWorker;
 		
-		for(int i = 0; i < Runtime.getRuntime().availableProcessors()*requestWorker; ++i){
+		this.workers = new ArrayBlockingQueue<Worker>(this.workerCount);
+		this.workersList = new ArrayList<Worker>(this.workerCount);//响应处理线程列表
+		
+		for(int i = 0; i < this.workerCount; ++i){
 			workersList.add(new Worker(serverPriority,workers));			
 		}		
 		
-		readWriteMonitors = new ArrayList<ReadWriteMonitor>(Runtime.getRuntime().availableProcessors() * monitorWorker);
-		for(int i = 0; i < Runtime.getRuntime().availableProcessors() * monitorWorker;++i){
+		readWriteMonitors = new ArrayList<ReadWriteMonitor>(this.readerWriterCount);
+		for(int i = 0; i < this.readerWriterCount;++i){
 			readWriteMonitors.add(create(serverPriority));// 创建请求发送监听线程
 		}
 		
@@ -210,7 +221,7 @@ public class MasterServer {
 		
 		if(this.timeOut > 0){
 			this.createClientMonitorThread(serverPriority);// 创建客户端数据接收状态监听线程
-		}
+		}		
 		
 		// 处理集群初始化
 		if(this.clustersSwitch){
@@ -310,7 +321,8 @@ public class MasterServer {
 			        	 isConnect = false;// 不需要做连接服务器了的操作了，已经连接上集群服务器了  			        	 
 			        	 this.readWriteMonitors.get(Math.abs(this.connectIndex.getAndIncrement()) 
 			    			     % this.readWriteMonitors.size()).registeClient(socketChannel);			        	 
-			        	 log.info("成功连接到集群服务器  " + address[0] + " 的端口:" + address[1]);  
+			        	 log.info("成功连接到集群服务器  " + address[0] + " 的端口:" + address[1]); 
+			        	 Thread.sleep(60 * 1000);// 休眠60秒钟
 		            }
 			         
 			        }catch(ClosedChannelException e){  
@@ -334,6 +346,7 @@ public class MasterServer {
 								log.warn(e.getMessage());
 							}			        	 
 							log.info("成功连接到集群服务器  ");
+							Thread.sleep(60 * 1000);// 休眠60秒钟
 						}
 					} catch (IOException e) {
 						log.warn(e.getMessage());
@@ -350,7 +363,33 @@ public class MasterServer {
 					}
 					
 					if(!isConnect && socketChannel.isConnected()){
-						Thread.sleep(10 * 60 * 1000);//10分钟检查一次
+						// 汇报本服务的负载情况到集群管理服务器
+						if(this.localClient != null){// 已经连接好，等待通信
+							StringBuilder sb = new StringBuilder();
+							sb.append("节点服务器：").append(this.localClient.getLocalAddress()).append("\r\n")
+							.append("服务器CPU内核数量：").append(this.coreCount).append("\r\n")
+							.append("服务器读写监听线程数量：").append(this.readerWriterCount).append("\r\n")
+							.append("服务器工作线程数量：").append(this.workerCount).append("\r\n")
+							.append("活跃连接客户端数量：").append(this.clients.keySet().size()).append("\r\n")
+							.append("活跃集群连接客户端数量：").append(this.clustersClients.keySet().size()).append("\r\n")
+							.append("活跃本地连接客户端数量：").append(this.localClients.keySet().size()).append("\r\n");
+							
+							log.info(sb.toString());
+							StringBuilder msg = new StringBuilder("action=1&");
+							msg.append("coreCount=").append(this.coreCount).append("&")
+							.append("readerWriterCount=").append(this.readerWriterCount).append("&")
+							.append("workerCount=").append(this.workerCount).append("&")
+							.append("clientCount=").append(this.clients.keySet().size()).append("&")
+							.append("clustersCount=").append(this.clustersClients.keySet().size()).append("&")
+							.append("port=").append(this.port).append("&")
+							.append("localCount=").append(this.localClients.keySet().size());
+							
+							Response response = new Response();
+							response.setBody(msg.toString());
+							this.localClient.sendMessage(response);
+							//coreCount=4&readerWriterCount=8&workerCount=32&clientCount=10000&clustersCount=5&localCount=4&port=9191
+						}
+						Thread.sleep(30 * 1000);//10分钟检查一次
 					}
 				}				
 			}catch(InterruptedException e){
@@ -387,6 +426,44 @@ public class MasterServer {
 		this.broadMessageThread.setPriority(serverPriority);
 		this.broadMessageThread.start();
 		log.info("消息广播线程创建完毕");
+	}
+	
+	/**
+	 * 
+	 * <li>方法名：addReadWriteMonitors
+	 * <li>@param count
+	 * <li>返回类型：void
+	 * <li>说明：
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-30
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	public Boolean addReadWriteMonitors(Integer count){		
+		for(int i = 0; i < count;++i){
+			readWriteMonitors.add(create(5));// 创建请求发送监听线程
+		}
+		
+		return true;
+	}
+	
+	/**
+	 * 
+	 * <li>方法名：addWorkers
+	 * <li>@param count
+	 * <li>返回类型：void
+	 * <li>说明：
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-10-30
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	public Boolean addWorkers(Integer count){
+		for(int i = 0; i < this.workerCount; ++i){
+			workersList.add(new Worker(5,workers));			
+		}
+		
+		return true;
 	}
 
 	/**
@@ -449,6 +526,7 @@ public class MasterServer {
 	public class ReadWriteMonitor extends Thread{		
 		private final AtomicBoolean wakenUp = new AtomicBoolean();		
 		private Selector selector;// 选择器
+		private ConcurrentLinkedQueue<SocketChannel> localSocketChannels = new ConcurrentLinkedQueue<SocketChannel>();//本地连接通道注册队列
 		private ConcurrentLinkedQueue<SocketChannel> socketChannels = new ConcurrentLinkedQueue<SocketChannel>();//通道注册队列
 		private ConcurrentLinkedQueue<SocketChannel> clustersSocketChannels = new ConcurrentLinkedQueue<SocketChannel>();//集群通道注册队列
 		private ConcurrentLinkedQueue<SocketChannel> clientSocketChannels = new ConcurrentLinkedQueue<SocketChannel>();//集群客户端或其他客户端通道注册队列
@@ -512,6 +590,40 @@ public class MasterServer {
 	        }
 		}
 		
+		/**
+		 * 
+		 * <li>方法名：registeLocalClient
+		 * <li>@param socketChannel
+		 * <li>@throws IOException
+		 * <li>返回类型：void
+		 * <li>说明：注册本地连接通道
+		 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+		 * <li>创建日期：2012-10-28
+		 * <li>修改人： 
+		 * <li>修改日期：
+		 */
+		public void registeLocalClient(SocketChannel socketChannel) throws IOException {		
+			// Register the new SocketChannel with our Selector, indicating
+			// we'd like to be notified when there's data waiting to be read			
+			this.localSocketChannels.offer(socketChannel);
+			
+			if (wakenUp.compareAndSet(false, true)) {
+	            selector.wakeup();
+	        }
+		}
+		
+		/**
+		 * 
+		 * <li>方法名：registeClient
+		 * <li>@param socketChannel
+		 * <li>@throws IOException
+		 * <li>返回类型：void
+		 * <li>说明：注册连接到集群服务器的本地连接通道
+		 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+		 * <li>创建日期：2012-10-28
+		 * <li>修改人： 
+		 * <li>修改日期：
+		 */
 		public void registeClient(SocketChannel socketChannel) throws IOException {		
 			// Register the new SocketChannel with our Selector, indicating
 			// we'd like to be notified when there's data waiting to be read			
@@ -584,12 +696,9 @@ public class MasterServer {
 						
 					// 根据key中的标识位判断是否为集群
 					sockector.registeHandler(clustersCoder, clustersDecoder, clustersProcesser);// 注册集群处理器
-					//sockector.registeHandler(coderHandler, decoderHandler, processHandler);// 注册业务处理器						
 					
-					sk.attach(sockector);
-					Integer index = keyIndex.incrementAndGet();
-					sockector.setIndex(index);// 设置索引
-					clients.put(index, sockector);// 放入到连接中					
+					sk.attach(sockector);					
+					MasterServer.this.clustersClients.put(sockector.getRouteAddress(), sockector);
 				}catch(Exception e){
 					e.printStackTrace();
 					try {
@@ -605,6 +714,35 @@ public class MasterServer {
 				socketChannel = this.clustersSocketChannels.poll();
 			}
 			
+			// 注册本地连接通道
+			socketChannel = this.localSocketChannels.poll();
+			// 集群服务器连接通道注册
+			while(socketChannel != null){// 处理新建立的链接
+				SelectionKey sk = null;
+				try {
+					sk = socketChannel.register(this.selector, SelectionKey.OP_READ);					
+					Client sockector = new Client(sk,MasterServer.this,this);
+						
+					// 根据key中的标识位判断是否为集群
+					sockector.registeHandler(clustersCoder, clustersDecoder, clustersProcesser);// 注册集群处理器
+					
+					sk.attach(sockector);					
+					MasterServer.this.localClients.put(sockector.getRouteAddress(), sockector);
+				}catch(Exception e){
+					e.printStackTrace();
+					try {
+						if(sk != null ){
+							sk.interestOps(0);
+							sk.cancel();
+						}
+						socketChannel.close();
+					}catch(IOException e1){
+						e1.printStackTrace();
+					}
+				}// 将事件注册放到一个容器中统一进行处理
+				socketChannel = this.localSocketChannels.poll();
+			}
+			
 			// 注册集群客户端请求通道的选择器
 			socketChannel = this.clientSocketChannels.poll();
 			while(socketChannel != null){// 处理新建立的链接
@@ -615,15 +753,11 @@ public class MasterServer {
 					
 					// 根据key中的标识位判断是否为集群
 					sockector.registeHandler(clustersCoder, clustersDecoder, clustersProcesser);// 注册集群处理器
-					//sockector.registeHandler(coderHandler, decoderHandler, processHandler);// 注册业务处理器						
 					
 					sk.attach(sockector);
 					
-					sockector.requestHandShak();// 发起握手请求
-					
-					Integer index = keyIndex.incrementAndGet();
-					sockector.setIndex(index);// 设置索引
-					clients.put(index, sockector);// 放入到连接中					
+					sockector.requestHandShak();// 发起握手请求				
+					MasterServer.this.localClient = sockector;
 				}catch(Exception e){
 					e.printStackTrace();
 					try {
@@ -649,7 +783,11 @@ public class MasterServer {
 					
 					// 根据key中的标识位判断是否为集群
 					//sockector.registeHandler(clustersCoder, clustersDecoder, clustersProcesser);// 注册集群处理器
-					sockector.registeHandler(coderHandler, decoderHandler, processHandler);// 注册业务处理器						
+					if(MasterServer.this.clustersSwitch && MasterServer.this.clustersRole == 2){
+						sockector.registeHandler(coderHandler, decoderHandler, clustersProcesser);// 注册业务处理器
+					}else{
+						sockector.registeHandler(coderHandler, decoderHandler, processHandler);// 注册业务处理器
+					}											
 					
 					sk.attach(sockector);
 					Integer index = keyIndex.incrementAndGet();
@@ -880,9 +1018,9 @@ public class MasterServer {
 		while(noStopRequested){
 			try {
 				if(this.timeOut > 0){// 超时阀值				
-					Iterator<Integer> it = clients.keySet().iterator();
+					Iterator<Object> it = clients.keySet().iterator();
 					while(it.hasNext()){
-						Integer key = it.next();
+						Object key = it.next();
 						Client client = clients.get(key);
 						if(!client.isReadDataFlag()){// 超时没有收到数据
 							client.close();// 关闭连接
@@ -1162,7 +1300,44 @@ public class MasterServer {
 	 * <li>修改人： 
 	 * <li>修改日期：
 	 */
-	public void clearSocket(Integer index){
-		this.clients.remove(index);
+	public void clearSocket(Object index){
+		Client client = this.localClients.remove(index);// 从本地连接中清除
+		if(client != null){
+			return;
+		}
+		
+		client = this.clustersClients.remove(index);// 从集群连接中清除
+		if(client != null){
+			return;
+		}
+				
+		client = this.clients.remove(index);// 从客户端连接中清除
+		if(client != null){
+			return;
+		}
+	}
+	
+	public Client getLocalClient() {
+		return localClient;
+	}
+
+	public void setLocalClient(Client localClient) {
+		this.localClient = localClient;
+	}
+	
+	public ConcurrentHashMap<Object, Client> getClustersClients() {
+		return clustersClients;
+	}
+
+	public void setClustersClients(ConcurrentHashMap<Object, Client> clustersClients) {
+		this.clustersClients = clustersClients;
+	}
+	
+	public ConcurrentHashMap<Object, Client> getLocalClients() {
+		return localClients;
+	}
+
+	public void setLocalClients(ConcurrentHashMap<Object, Client> localClients) {
+		this.localClients = localClients;
 	}
 }
