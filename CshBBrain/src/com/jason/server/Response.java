@@ -49,6 +49,15 @@ public class Response {
 	private ByteBuffer currentByteBuffer = null;// 当前的bytebuffer	
 	private Response parent = null;// 是否有父亲
 	private AtomicInteger subResponse = new AtomicInteger(0);// 是否将内容放入缓存，默认为没有
+	private ByteBuffer currentBuffer = null;// 当前缓冲区
+	
+	public ByteBuffer getCurrentBuffer() {
+		return currentBuffer;
+	}
+
+	public void setCurrentBuffer(ByteBuffer currentBuffer) {
+		this.currentBuffer = currentBuffer;
+	}
 	
 	public Response getParent() {
 		return parent;
@@ -199,21 +208,21 @@ public class Response {
 		SocketChannel socketChannel =sk.getChannel();		
 		this.bufferedContent();// 将内容放入到缓冲区中去
 		
-		if(this.currentByteBuffer == null){// 第一次获取缓存，写入数据
-			this.currentByteBuffer = this.currentBufferQueue.poll();
+		if(this.currentBuffer == null){// 第一次获取缓存，写入数据
+			this.currentBuffer = this.currentBufferQueue.poll();
 			
-			if(this.currentByteBuffer != null){
-				log.info("the postion of the data in write: " + this.currentByteBuffer.position());
-				this.currentByteBuffer.flip();// 反转缓存区
+			if(this.currentBuffer != null){
+				log.info("the postion of the data in write: " + this.currentBuffer.position());
+				this.currentBuffer.flip();// 反转缓存区
 			}
 		}
 		
 		// 处理响应头，响应体的传输
-		if(this.currentByteBuffer != null){						
-			while(this.currentByteBuffer != null){
+		if(this.currentBuffer != null){						
+			while(this.currentBuffer != null){
 				int transCount = 0;
 				try{
-					transCount = socketChannel.write(this.currentByteBuffer);
+					transCount = socketChannel.write(this.currentBuffer);
 					log.info("translate size:" + transCount);									
 				}catch(IOException e){
 					e.printStackTrace();
@@ -223,18 +232,18 @@ public class Response {
 				}// 非阻塞的sockect连接一次可能写不完数据
 				
 				//this.callCount.incrementAndGet();//回写计数器
-				if(this.currentByteBuffer.position() + transCount >= this.currentByteBuffer.limit()){// 传完
-					this.currentByteBuffer.clear();
-					BufferPool.getInstance().releaseBuffer(this.currentByteBuffer);// 将用完的缓冲区放回缓冲区池
+				if(this.currentBuffer.position() + transCount >= this.currentBuffer.limit()){// 传完
+					this.currentBuffer.clear();
+					BufferPool.getInstance().releaseBuffer(this.currentBuffer);// 将用完的缓冲区放回缓冲区池
 					//this.currentBufferQueue.poll();// 从队列中删除缓冲区
 					
 					// 获取下一个缓冲区进行传输
-					this.currentByteBuffer = this.currentBufferQueue.poll();					
-					if(this.currentByteBuffer != null){
-						this.currentByteBuffer.flip();// 反转缓存区
+					this.currentBuffer = this.currentBufferQueue.poll();					
+					if(this.currentBuffer != null){
+						this.currentBuffer.flip();// 反转缓存区
 					}
 				}else if(transCount > 0){// 没有传完,下次再传输
-					this.currentByteBuffer.position(this.currentByteBuffer.position() + transCount);					
+					this.currentBuffer.position(this.currentBuffer.position() + transCount);					
 				}else if(transCount <= 0){// 缓冲区已满，无法写入更多的数据
 					this.callCount.incrementAndGet();//回写计数器
 					return 2;
