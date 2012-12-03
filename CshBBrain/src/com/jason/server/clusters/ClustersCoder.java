@@ -72,6 +72,7 @@ import com.jason.util.CoderUtils;
  */
 public class ClustersCoder extends CoderHandler {
 	private static Log log = LogFactory.getLog(ClustersCoder.class);// 日志记录器
+	
 	public void process(Client sockector) {
 		Response msg = sockector.getResponseMsgsNotCode().poll();	
 		while(msg != null){			
@@ -93,7 +94,7 @@ public class ClustersCoder extends CoderHandler {
 			
 			msg = sockector.getResponseMsgsNotCode().poll();
 		}
-	}
+	}	
 	
 	/**
 	 * 
@@ -109,7 +110,7 @@ public class ClustersCoder extends CoderHandler {
 	 */
 	public void broundMsg(Client sockector, Response msg) throws IOException{		
 		byte[] msgs = CoderUtils.toByte(msg.getBody());
-		ClustersMessage messageFrame = sockector.getRequestWithFile().<ClustersMessage>getMessageHeader();
+		ClustersMessage messageFrame = sockector.getRequestWithFile().<ClustersMessage>getMessageHeader(msg.getRequestIndex());
 		
 		if(messageFrame == null){
 			messageFrame = new ClustersMessage();
@@ -141,9 +142,8 @@ public class ClustersCoder extends CoderHandler {
 		}*/
 		
 		msg.appendBytes(msgs);
-		msg.resetCurrentBuffer();
 		
-		sockector.getRequestWithFile().clear();// 清理每次连接交互的数据
+		sockector.getRequestWithFile().clearMessageHeader(msg.getRequestIndex());// 清理每次连接交互的数据
     }
 	
 	public void handShak(Client sockector) {

@@ -36,7 +36,7 @@ public class Server{
 	public static void main(String[] args){
 		try{
 			new MasterServer(new WebSocketCoder(), new WebSocketDecoder(), new WebSocketProcesser());
-			BroadThread.getInstance();
+			//BroadThread.getInstance();
 		}catch(IOException e){		
 			e.printStackTrace();
 		}

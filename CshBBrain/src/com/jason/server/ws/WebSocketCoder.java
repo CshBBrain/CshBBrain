@@ -87,8 +87,8 @@ public class WebSocketCoder extends CoderHandler {
 			}// 创建响应头部信息
 			
 			msg = sockector.getResponseMsgsNotCode().poll();
-		}		
-	}
+		}
+	}	
 	
 	/**
 	 * 
@@ -131,7 +131,7 @@ public class WebSocketCoder extends CoderHandler {
 	 */
 	public void codeVersion6(Client sockector, Response msg){		
 		byte[] msgs = CoderUtils.toByte(msg.getBody());
-		WebSocketMessage messageFrame = sockector.getRequestWithFile().<WebSocketMessage>getMessageHeader();
+		WebSocketMessage messageFrame = sockector.getRequestWithFile().<WebSocketMessage>getMessageHeader(msg.getRequestIndex());
 		
 		if(messageFrame == null){
 			messageFrame = new WebSocketMessage();
@@ -163,8 +163,7 @@ public class WebSocketCoder extends CoderHandler {
 		}*/
 		
 		msg.appendBytes(msgs);
-		msg.resetCurrentBuffer();
 		
-		sockector.getRequestWithFile().clear();// 清理每次连接交互的数据
+		sockector.getRequestWithFile().clearMessageHeader(msg.getRequestIndex());// 清理每次连接交互的数据
 	}
 }

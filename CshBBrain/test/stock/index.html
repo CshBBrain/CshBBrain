@@ -167,18 +167,6 @@
 
 function websocket(url,stockid,scrolltxt){
 	var socket = new WebSocket(url); 
-	
-	socket.onclose = function(e){
-		alert("is close");
-	}
-
-	socket.onerror = function(e){
-		alert("error " + e);
-	}
-
-	socket.onopen = function(e){
-		alert("is open");
-	}
 
 	socket.onmessage = function(event) {
 		var stock = window.JSON.parse(event.data);
@@ -204,8 +192,14 @@ function websocket(url,stockid,scrolltxt){
 
 		document.getElementById(stockid).innerHTML = stockText;
 		scrolltxt.initialize();
-    };    
+    };  
+	
+	socket.onerror = function(event){
+		alert(event);
+	}
 }
+
+
 
 websocket("ws://192.168.1.220:9090/echo",'stock',scrolltxt);
 </script> 

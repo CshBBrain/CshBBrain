@@ -50,7 +50,16 @@ public class Response {
 	private Response parent = null;// 是否有父亲
 	private AtomicInteger subResponse = new AtomicInteger(0);// 是否将内容放入缓存，默认为没有
 	private ByteBuffer currentBuffer = null;// 当前缓冲区
+	private String requestIndex;// 请求索引
 	
+	public String getRequestIndex() {
+		return requestIndex;
+	}
+
+	public void setRequestIndex(String requestIndex) {
+		this.requestIndex = requestIndex;
+	}
+
 	public ByteBuffer getCurrentBuffer() {
 		return currentBuffer;
 	}
@@ -356,7 +365,7 @@ public class Response {
 	 * <li>修改人： 
 	 * <li>修改日期：
 	 */
-	public void bufferedContent(){		
+	public void bufferedContent(){	
 		if(this.isBuffered.compareAndSet(false, true)){// 如果已经做的缓存就不做处理了			
 			this.currentByteBuffer = null;// 将当前缓冲区置空
 			this.currentBufferQueue = new ConcurrentLinkedQueue<ByteBuffer>();// 当前正在处理的缓冲区队列

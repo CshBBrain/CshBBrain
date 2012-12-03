@@ -78,15 +78,66 @@ clustersServer:管理服务器地址和端口
 
 3.管理服务器和普通服务器：
 管理服务器是专门搜集管理所有普通服务器的服务器，可以向普通服务器移交管理权限。
+集群接口定义：action ：操作类型，传递参数的格式和http请求一致：param1=value1&param2=value2&parame3=value3
 
 3.1 普通服务器需要想管理服务汇报CPU参数，内存参数，工作线程数量，可以处理的连接极限数量，读写监听线程数量，进入监听线程数量，使用的端口
+action:1
+coreCount:服务器内核数量
+readerWriterCount：读写监听线程数量
+workerCount：工作线程数量
+clientCount:客户端连接数量
+clustersCount:集群服务器连接数量
+localCount:本地连接数量
+port:客户端连接端口
+举例：action=1&coreCount=4&readerWriterCount=8&workerCount=32&clientCount=10000&clustersCount=5&localCount=4&port=9191
+
 3.2 管理服务器可以想普通服务器下达新增监听端口，关闭监听端口，增加工作线程数量，减少工作线程数量，增加减少读写监听线程数量。
+增加工作线程数量
+action:2
+count:增加的数量
+
+减少工作线程数量
+action:3
+count:减少的数量
+
+增加读写监听线程数量
+action:4
+count:增加的数量
+
+减少读写监听线程数量
+action:5
+count:减少的数量
+
 3.3 分配服务器和端口给客户端
+请求分配服务器和端口地址：
+action:0
+返回值：服务器地址ip和端口
+
 3.4 管理服务器管理权限移交和接手
+action:6
+ip:新的管理服务器地址
+port:新的管理里服务器端口
+
 3.5 查看服务器的数量，查看各服务器的使用情况。
+
 3.6 普通服务器相互备份数据
+
 3.7 普通服务器的业务数据交换
+action:31
+content:交换的数据内容，服务器接收到数据自己解析
+
 3.8 管理服务器通知普通服务器A向普通服务器B交换数据
+action:32
+ip:被连接服务器ip地址
+port:被连接服务器端口
+content:交换的数据内容，服务器接收到数据自己解析
+
+3.9 集群服务器表示已经成功处理请求：
+action:1000 处理成功
+action:2000 处理失败
+
+
+
 
 1.使用手册
 2.设计

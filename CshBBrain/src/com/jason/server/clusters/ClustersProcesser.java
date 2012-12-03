@@ -17,6 +17,7 @@ import org.apache.commons.logging.LogFactory;
 import com.jason.server.Response;
 import com.jason.server.Client;
 import com.jason.server.hander.ProcessHandler;
+import com.jason.server.ws.WebSocketConstants;
 import com.jason.server.ws.biz.Constants;
 
 /**
@@ -80,6 +81,7 @@ public class ClustersProcesser extends ProcessHandler {
 			msg.put(Constants.FILED_IP, sockector.getIp());
 			Response rm = ClustersService.getInstance().service(sockector,msg);
 			if(rm != null){
+				rm.setRequestIndex(msg.get(WebSocketConstants.REQUEST_INDEX));// 设置请求索引数
 				sockector.addResponseMsg(rm);
 			}
 			

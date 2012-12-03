@@ -36,4 +36,6 @@ public class WebSocketConstants {
 	public static final int SPLITVERSION0 = 0;// 版本0
 	public static final int SPLITVERSION6 = 6;// 版本6
 	public static final int SPLITVERSION7 = 7;// 版本7
+	
+	public static final String REQUEST_INDEX = "requestIndex";// 请求索引数
 }

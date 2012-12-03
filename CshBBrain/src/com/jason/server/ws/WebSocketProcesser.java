@@ -81,6 +81,7 @@ public class WebSocketProcesser extends ProcessHandler {
 			msg.put(Constants.FILED_IP, sockector.getIp());
 			Response rm = Service.getInstance().service(sockector,msg);
 			if(rm != null){
+				rm.setRequestIndex(msg.get(WebSocketConstants.REQUEST_INDEX));// 设置请求索引数
 				sockector.addResponseMsg(rm);
 			}
 			

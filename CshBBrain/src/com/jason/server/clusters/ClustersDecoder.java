@@ -28,6 +28,7 @@ import com.jason.Config;
 import com.jason.server.Request;
 import com.jason.server.Client;
 import com.jason.server.hander.DecoderHandler;
+import com.jason.server.ws.WebSocketConstants;
 import com.jason.server.ws.biz.Constants;
 import com.jason.util.MyStringUtil;
 import com.jason.util.CoderUtils;
@@ -102,7 +103,7 @@ public class ClustersDecoder extends DecoderHandler {
 				this.processClientHandShak(sockector, msg);// 处理客户端连接握手
 			}else{
 				HashMap<String,String> requestData = new HashMap<String,String>();
-				sockector.getRequestWithFile().setRequestData(requestData);
+				sockector.addRequest(requestData);
 				
 				try{
 					ClustersRequest requestInfo = parserRequest(msg);
@@ -128,83 +129,64 @@ public class ClustersDecoder extends DecoderHandler {
 	 * <li>修改人： 
 	 * <li>修改日期：
 	 */
-    private void parser(ByteBuffer buffer, Client sockector){
-    	Request requestData= sockector.getRequestWithFile();
-    	ClustersMessage messageFrame = requestData.<ClustersMessage>getMessageHeader();
-    	if(messageFrame == null){// 读取消息帧信息    		
-        	messageFrame = new ClustersMessage();
-        	requestData.setMessageHeader(messageFrame);
-        	requestData.setByteDatas(new ArrayList<byte[]>(2));
-        	
-        	byte[] headers = new byte[8];// 数据帧的头部信息    
-        	buffer.get(headers, 0, 2);
-    		int bt, b2;
-    		bt = headers[0];
-    		messageFrame.setFin((byte) (bt & ClustersMessage.FIN));// 后面是否有续帧数据标识
-    		messageFrame.setRsv1((byte) (bt & ClustersMessage.RSV1));// 保留标识1
-    		messageFrame.setRsv2((byte) (bt & ClustersMessage.RSV2));// 保留标识2
-    		messageFrame.setRsv3((byte) (bt & ClustersMessage.RSV3));// 保留标识3
-    		messageFrame.setOpcode((byte) (bt & ClustersMessage.OPCODE));//标识数据的格式，以及帧的控制，如：01标识数据内容是 文本，08标识：要求远端去关闭当前连接。 
-
-    		bt = headers[1];
-    		messageFrame.setMask((byte) (bt & ClustersMessage.MASK));// 是否mask标识
-    		
-    		/*如果小于126 表示后面的数据长度是 [Payload len] 的值。（最大125byte） 
-              等于 126 表示之后的16 bit位的数据值标识数据的长度。（最大65535byte） 
-              等于 127 表示之后的64 bit位的数据值标识数据的长度。（一个有符号长整型的最大值）*/
-    		int dataLen = bt & ClustersMessage.PAYLOADLEN;// 数据长度位数
-
-    		if (dataLen == ClustersMessage.HAS_EXTEND_DATA) {// read next 16 bit
-    			buffer.get(headers, 0, 2);// 读取2位数字
-    			bt = headers[0];
-    			b2 = headers[1];
-    			messageFrame.setDateLength(CoderUtils.toShort((byte)bt, (byte)b2));
-    		} else if (dataLen == ClustersMessage.HAS_EXTEND_DATA_CONTINUE) {// read next 32 bit
-    			buffer.get(headers, 0, 8);// 读取8位数字
-    			messageFrame.setDateLength(CoderUtils.toLong(headers));
-    		} else {
-    			messageFrame.setDateLength(dataLen);
-    		}
-    		
-    		requestData.setDataSizeLeftLong(dataLen);
-    		
-    		if (messageFrame.isMask()){
-    			buffer.get(headers, 0, 4);// 读取mask的key
-    			messageFrame.setMaskingKey(headers[0],headers[1],headers[2],headers[3]);
-    		}
-    	}
-    	
-    	if(!requestData.readFinish()){// 是否读取完数据,读取完毕对数据进行处理
-    		int dataLength = buffer.limit() - buffer.position();
-    		byte[] datas = new byte[dataLength];
-    		buffer.get(datas);
-    		
-    		if(messageFrame.isMask()){// 做加密处理
-				for (int i = 0; i < dataLength; i++) {
-					datas[i] ^= messageFrame.getMaskingKey()[(int) (requestData.getDataPosition() % 4)];
-					requestData.setDataPosition(requestData.getDataPosition() + 1);
-				}
-			}else{// 没做加密处理
-				requestData.setDataSizeLeftLong(requestData.getDataSizeLeftLong() - dataLength);
-				requestData.setDataPosition(requestData.getDataPosition() + dataLength);
-			}
-    		
-    		requestData.getByteDatas().add(datas);
-    		
-    		try{
-				String a = new String(datas,"utf-8");
-				log.info("jason,the msg is : " + a);
-				/*requestData.getByteDatas();
-				
-				HashMap<String,String> data = new HashMap<String,String>();
-				sockector.getRequestWithFile().setRequestData(data);
-				data.put(Constants.FILED_MSG, a);*/
-				// 对数据进行处理
-				sockector.getRequestWithFile().setRequestData(MyStringUtil.parseKeyValue(requestData.getRequestMessage()));				
-			}catch(Exception e){
-				log.info(e.getMessage());// 日志消息
-			}
-    	}    	
+	 private void parser(ByteBuffer buffer, Client sockector){
+		 do{
+	    	Request requestData= sockector.getRequestWithFile();
+	    	
+	    	String requestIndex = requestData.getCrrentRequestIndex();
+	    	ClustersMessage messageFrame = null;
+	    	if(MyStringUtil.isBlank(requestIndex)){// 没有出现半包的情况
+	    		messageFrame = new ClustersMessage();
+		    	requestIndex = requestData.setMessageHeader(messageFrame);
+	    	}else{// 出现半包的情况
+	    		messageFrame = requestData.<ClustersMessage>getMessageHeader(requestIndex);
+	    	}
+	    	
+	    	if(requestData.readFinish()){
+		    	requestData.setByteDatas(new ArrayList<byte[]>(2));		    	
+	    	}
+	    	
+	    	if(!messageFrame.isReadFinish()){
+	    		messageFrame.parseMessageHeader(buffer);// 读取解析消息头
+	    		requestData.setDataSizeLeftLong(messageFrame.getDateLength());// 设置数据长度
+	    	}
+	    	
+	    	if(!requestData.readFinish()){// 是否读取完数据
+	    		int bufferDataLength = buffer.limit() - buffer.position();
+	    		int dataLength = bufferDataLength > requestData.getDataSizeLeftLong() ? requestData.getDataSizeLeftLong().intValue() : bufferDataLength;
+	    		    		
+	    		byte[] datas = new byte[dataLength];
+	    		
+	    		if(dataLength > 0){
+		    		buffer.get(datas);
+		    		
+		    		if(messageFrame.isMask()){// 做加密处理
+						for (int i = 0; i < dataLength; i++) {
+							datas[i] ^= messageFrame.getMaskingKey()[(int) (requestData.getDataPosition() % 4)];
+							requestData.setDataPosition(requestData.getDataPosition() + 1);
+						}
+					}else{// 没做加密处理					
+						requestData.setDataPosition(requestData.getDataPosition() + dataLength);
+					}
+		    		
+		    		requestData.setDataSizeLeftLong(requestData.getDataSizeLeftLong() - dataLength);// 设置剩余数量的数据
+		    		
+		    		requestData.getByteDatas().add(datas);
+	    		}
+	    		
+	    		if(requestData.readFinish()){// 消息读取完毕，放入处理队列中
+					log.info("jason,the msg is : " + requestData.getRequestMessage());
+					
+					HashMap<String,String> data = MyStringUtil.parseKeyValue(requestData.getRequestMessage());
+					sockector.addRequest(data);
+					data.put(WebSocketConstants.REQUEST_INDEX, requestIndex);
+					
+					requestData.clear();// 清空字节数组
+	    		}else{
+	    			log.info("jason,the msg is : 78" );
+	    		}
+	    	}
+    	}while(buffer.limit() > buffer.position());// 处理粘包的情况    	
 	}
 
 	/**

@@ -7,10 +7,7 @@
 <meta name="format-detection" content="telephone=no">
 <meta name="viewport" content="minimum-scale=1.0,maximum-scale=1,width=device-width,user-scalable=no" />
 <title>首页</title>
-<!--link rel="stylesheet" type="text/css" media="all" href="css/style.css" /-->
-<link rel="stylesheet" type="text/css" media="all and (orientation:portrait)" href="css/style.css" />
-<link rel="stylesheet" type="text/css" media="all and (orientation:landscape)" href="css/style_land.css"/>
-<script src="js/scrollpic.js" type="text/javascript"></script>
+<script src="./cshbbrain.js" type="text/javascript"></script>
 
 </head>
 
@@ -51,6 +48,16 @@ socket.onmessage = function(e) {// 收到消息处理事件，将收到的内容
 function send(){// 发送输入的人名
 	socket.send(document.getElementById('txt').value);
 }
+
+setInterval(function(){
+	document.getElementById('stock').innerHTML = '';
+	for(var i = 1; i < 500;++i){
+		setTimeout(function(){_.getData("abc?msg=hello,this is test data,with length is ok&ip=123467899&section=908978iuijyiikjukiujkiukdkdkdkdkkduk&paperId=789jkkkllllklllalldlalflaldslflald678899979&articleid=09iokl23lop98ikju879fkuiji345akkk&paperId=789jkkkllllklllalldlalflaldslflald678899979&articleid=09iokl23lop98ikju879fkuiji345akkk&paperId=789jkkkllllklllalldlalflaldslflald678899979&articleid=09iokl23lop98ikju879fkuiji345akkk&paperId=789jkkkllllklllalldlalflaldslflald678899979&articleid=09iokl23lop98ikju879fkuiji345akkk",function(resultData){
+		document.getElementById('stock').innerHTML += resultData;
+		});},50);
+	}
+
+},3000);
 
 </script> 
 

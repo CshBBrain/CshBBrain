@@ -118,25 +118,19 @@ public class CoderUtils {
 	 * <li>修改日期：
 	 */
 	public static long toLong(byte ... b) {
-		long l = 0;
-		int len = b.length;
-		if (len > 0)
-			l = b[0];
-		if (len > 1)
-			l = ((long) l <<  8 | b[1]);
-		if (len > 2)
-			l = ((long) l << 16 | b[2]);
-		if (len > 3)
-			l = ((long) l << 24 | b[3]);
-		if (len > 4)
-			l = ((long) l << 32 | b[3]);
-		if (len > 5)
-			l = ((long) l << 40 | b[3]);
-		if (len > 6)
-			l = ((long) l << 48 | b[3]);
-		if (len > 7)
-			l = ((long) l << 56 | b[3]);
-		return l;
+		int mask = 0xff;
+		int temp = 0;
+		long res = 0;
+		int byteslen = b.length;
+		if (byteslen > 8) {
+			return Long.valueOf(0L);
+		}
+		for (int i = 0; i < byteslen; i++) {
+			res <<= 8;
+			temp = b[i] & mask;
+			res |= temp;
+		}
+		return res;
 	}
 
 	/**

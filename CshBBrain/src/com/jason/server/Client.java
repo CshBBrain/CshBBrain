@@ -462,14 +462,29 @@ public class Client{
 			}
 		}
 		
-		if(returnValue){// 读取完毕放入处理队列
+		/*if(returnValue){// 读取完毕放入处理队列
 			HashMap<String, String> requestData = requestWithFile.getRequestData();
 			if(requestData != null){
 				this.getBizObjects().add(requestData);
 			}
-		}
+		}*/
 		
 		return returnValue;
+	}
+	
+	/**
+	 * 
+	 * <li>方法名：addRequest
+	 * <li>@param requestData
+	 * <li>返回类型：void
+	 * <li>说明：将请求参数放入到队列中
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-11-27
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	public void addRequest(HashMap<String, String> requestData){
+		this.getBizObjects().add(requestData);
 	}
 	
 	/**

@@ -11,6 +11,7 @@ package com.jason.server;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -39,13 +40,64 @@ public class Request {
 	private ByteBuffer datas;//请求数据
 	
 	// 针对数据量特别大的请求，比如视频流，做专门的处理
-	private long dataSizeLeftLong = 0l;// 数据剩余大小 
+	private Long dataSizeLeftLong = 0l;// 数据剩余大小 
 	private ArrayList<byte[]> byteDatas;// 流格式数据
 	private boolean directProcess = false;// 是否立即处理收到的数据，具体协议实现根据需要设置
 	
 	private long dataPosition = 0l;// 接收数据的当前位置，从0开始接收起
-	private Object messageHeader = null;// 消息
 	private String message = null;// 临时存储的消息
+	
+	private AtomicInteger requestIndex = new AtomicInteger(0);// 请求顺序
+	private HashMap<String,Object> messageHeaders = new HashMap<String, Object>();
+	private String crrentRequestIndex = null;// 当前请求序号
+	
+	public String getCrrentRequestIndex() {
+		return crrentRequestIndex;
+	}
+
+	public void setCrrentRequestIndex(String crrentRequestIndex) {
+		this.crrentRequestIndex = crrentRequestIndex;
+	}
+	/**
+	 * 
+	 * <li>方法名：setMessageHeader
+	 * <li>@param messageHeader
+	 * <li>@return
+	 * <li>返回类型：String
+	 * <li>说明：
+	 * <li>创建人：陈嗣洪
+	 * <li>创建日期：2012-11-26
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	public String setMessageHeader(Object messageHeader){
+		String index = String.valueOf(requestIndex.incrementAndGet());
+		this.messageHeaders.put(index, messageHeader);
+		this.crrentRequestIndex = index;
+		return index;
+	}
+	
+	/**
+	 * 
+	 * <li>方法名：getMessageHeader
+	 * <li>@param <T>
+	 * <li>@param index
+	 * <li>@return
+	 * <li>返回类型：T
+	 * <li>说明：
+	 * <li>创建人：陈嗣洪
+	 * <li>创建日期：2012-11-26
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	public <T> T getMessageHeader(String index) {
+		Object header = this.messageHeaders.get(index);
+		if(header != null){
+			return (T)header;
+		}else{
+			return null;
+		}
+	}
 	
 	
 	public String getRequestMessage(){
@@ -63,6 +115,7 @@ public class Request {
 				buffer.put(byteDatas.get(i));
 			}
 			
+			buffer.flip();// 读取数据
 			this.message = CoderUtils.decode(buffer);// 直接处理返回
 		}
 		
@@ -91,8 +144,23 @@ public class Request {
 		this.byteDatas = null;
 		this.directProcess = false;
 		this.dataPosition = 0l;
-		this.messageHeader = null;
 		this.message = null;
+		this.crrentRequestIndex = null;
+	}
+	
+	/**
+	 * 
+	 * <li>方法名：clearMessageHeader
+	 * <li>@param index
+	 * <li>返回类型：void
+	 * <li>说明：清除请求消息头部信息
+	 * <li>创建人：CshBBrain, 技术博客：http://cshbbrain.iteye.com/
+	 * <li>创建日期：2012-11-27
+	 * <li>修改人： 
+	 * <li>修改日期：
+	 */
+	public void clearMessageHeader(String index){
+		this.messageHeaders.remove(index);
 	}
 	
 	/**
@@ -107,7 +175,7 @@ public class Request {
 	 * <li>修改日期：
 	 */
 	public boolean readFinish(){
-		return (this.dataSizeLeftInt <= 0 ? true : false) && (this.dataSizeLeftLong <= 0 ? true : false) && this.fileReceiver.finishWrite();
+		return (this.dataSizeLeftInt <= 0 ? true : false) && (this.dataSizeLeftLong <= 0 ? true : false) && (this.fileReceiver == null || (this.fileReceiver != null && this.fileReceiver.finishWrite()));
 	}
 	public Request(){
 		
@@ -172,7 +240,7 @@ public class Request {
 	public void setByteDatas(ArrayList<byte[]> byteDatas) {
 		this.byteDatas = byteDatas;
 	}
-	public long getDataSizeLeftLong() {
+	public Long getDataSizeLeftLong() {
 		return dataSizeLeftLong;
 	}
 	public void setDataSizeLeftLong(long dataSizeLeftLong) {
@@ -189,12 +257,5 @@ public class Request {
 	}
 	public void setDataPosition(long dataPosition) {
 		this.dataPosition = dataPosition;
-	}
-	public <T> T getMessageHeader() {
-		return (T)messageHeader;
-	}
-	public void setMessageHeader(Object messageHeader) {
-		this.messageHeader = messageHeader;
-	}
-	
+	}	
 }

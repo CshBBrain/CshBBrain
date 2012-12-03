@@ -24,7 +24,7 @@ import com.jason.util.MyStringUtil;
  * 
  * <li>类型名称：
  * <li>说明：股票指数爬虫
- * <li>创建人： 陈嗣洪
+ * <li>创建人： CshBBrain
  * <li>创建日期：2011-10-8
  * <li>修改人： 
  * <li>修改日期：
@@ -129,7 +129,7 @@ public class StockSpider {
 	 * <li>
 	 * <li>返回类型：void
 	 * <li>说明：
-	 * <li>创建人：陈嗣洪
+	 * <li>创建人：CshBBrain
 	 * <li>创建日期：2011-10-9
 	 * <li>修改人： 
 	 * <li>修改日期：
@@ -219,7 +219,7 @@ public class StockSpider {
 			
 			Response rs = new Response();			
 			rs.setBody(sb.toString());
-			System.out.println(sb.toString());
+			//System.out.println(sb.toString());
 			MasterServer.addBroadMessage(rs);// 将广播消息添加到websocketer服务器的广播消息队列中
 						
 			if(end - begin < 1000 * 3){
@@ -242,7 +242,7 @@ public class StockSpider {
 	 * <li>@return
 	 * <li>返回类型：String
 	 * <li>说明：通过get方法获取股指数据
-	 * <li>创建人：陈嗣洪
+	 * <li>创建人：CshBBrain
 	 * <li>创建日期：2011-10-8
 	 * <li>修改人： 
 	 * <li>修改日期：
@@ -290,7 +290,7 @@ public class StockSpider {
 	 * <li>
 	 * <li>返回类型：void
 	 * <li>说明：停止股指采集器
-	 * <li>创建人：陈嗣洪
+	 * <li>创建人：CshBBrain
 	 * <li>创建日期：2011-10-9
 	 * <li>修改人： 
 	 * <li>修改日期：
