@@ -17,3 +17,23 @@ CshBBrain is a simple,lightweight and high performace websocket server from Chin
 该项目被开源中国收录：http://www.oschina.net/p/cshbbrain
 作者的技术博客地址：http://cshbbrain.iteye.com/
 使用交流专栏地址：http://www.iteye.com/blogs/subjects/CshBBrain
+
+与宝贝鱼服务器搭配使用的前台JS框架CshBBrainJS于2012.12.03发布。
+项目地址：
+http://www.oschina.net/p/cshbbrainjs
+http://code.google.com/p/cshbbrainjs/
+https://github.com/CshBBrain/CshBBrainJS
+
+数码快看（http://211.100.41.186:8989/mcms/ws/index_ws_tom.html），如果你喜欢数码快看产品请到www.qook.com.cn下载iOS或Android的安装程序。由于知识产权的关系，提供的实例屏蔽了部分功能，混淆了前台代码，只支持高版本的Chrome浏览器。下面上几张图片吧：
+
+<img src="http://dl.iteye.com/upload/attachment/0077/3127/349cffa7-c0f6-3524-a3a3-6497a062ae6c.png"/>
+
+<img src="http://dl.iteye.com/upload/attachment/0077/3125/1384757b-1a6c-3eb2-a660-ffa302dfd813.png"/>
+
+<img src="http://dl.iteye.com/upload/attachment/0077/3132/952b8d62-d3b2-3b0d-9379-93036204ee9c.png"/>
+
+<img src="http://dl.iteye.com/upload/attachment/0077/3133/1c736e75-7ac3-3ab4-975f-56c58c5aaeee.png"/>
+
+<img src="http://dl.iteye.com/upload/attachment/0077/3130/683d821d-6e90-3334-bf6d-4455e7867691.png"/>
+
+<img src="http://dl.iteye.com/upload/attachment/0077/3123/3a344087-3906-37ab-8253-d5056ef2f1a4.png"/>
