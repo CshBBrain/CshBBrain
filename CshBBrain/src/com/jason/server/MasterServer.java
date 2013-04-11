@@ -1032,14 +1032,30 @@ public class MasterServer {
 				if(this.timeOut > 0){// 超时阀值				
 					Iterator<Object> it = clients.keySet().iterator();
 					while(it.hasNext()){
-						Object key = it.next();
-						Client client = clients.get(key);
-						if(!client.isReadDataFlag()){// 超时没有收到数据
-							client.close();// 关闭连接
-							clients.remove(key);// 从映射表中删除连接
-						}else{
-							client.setReadDataFlag(false);// 将读取数据标识设置为false
-						}
+						try{
+							Object key = it.next();
+							Client client = clients.get(key);
+							
+							if(client.getReadStatus() == 1){// 将没有上传过数据的连接状态由1设置为4，如果下个周期检查到状态还为4，则果断关闭连接
+								client.setReadStatus(4);
+							}
+							
+							if(client.getReadStatus() == 2){// 将上传过数据的连接状态由2设置为3，如果下个周期检查到状态还为3，则果断关闭连接
+								client.setReadStatus(3);
+							}
+							
+							if(client.getReadStatus() == 3){// 关闭超时还没有交互的连接
+								client.close();// 关闭连接
+								clients.remove(key);// 从映射表中删除连接
+							}
+							
+							if(client.getReadStatus() == 4){// 关闭一直没有发送数据的连接
+								client.close();// 关闭连接
+								clients.remove(key);// 从映射表中删除连接
+							}
+						}catch(Exception e){
+							
+						}				
 					}
 					
 					this.clientMonitor.sleep(this.timeOut * 60 * 1000);// 暂停10分钟

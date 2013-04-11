@@ -39,7 +39,8 @@ public class Client{
 	private ReadWriteMonitor inputMonitorWorker;
 	private Integer readCount = 0;// 读取次数
 	private boolean preBlank = false;//上次读取为空读
-	private boolean readDataFlag = true;//数据读取标识
+	//private boolean readDataFlag = true;//数据读取标识
+	private int readStatus = 1;//数据读取标识,1：连接建立，客户端没有上传过数据,2:客户端上传过数据,3:检查连接状态时，将2设置为等待3,4:检查连接状态时，将1设置为4
 	private Request requestWithFile = null;// 文件接收器
 	
 	// 定义编码处理器，业务处理器，解码处理器
@@ -272,6 +273,7 @@ public class Client{
 							case 2:// 数据没有写入完，等待下次写入
 								this.registeWrite();
 								isStopWrite = true;// 缓冲区已满，退出循环
+								this.inWrite.set(false);
 								break;
 							}						
 						}
@@ -312,6 +314,7 @@ public class Client{
 							case 2:// 数据没有写入完，等待下次写入
 								this.registeWrite();
 								isStopWrite = true;// 连接缓冲区已满，退出循环
+								this.inWrite.set(false);
 								break;
 							}
 						}
@@ -397,7 +400,7 @@ public class Client{
 					this.decoderHandler.process(byteBuffer,this);// 解码处理				
 					byteBuffer.clear();					
 					readSuccess = true;
-					this.readDataFlag = true;// 将读取数据标识设置为真
+					this.readStatus = 2;// 将读取数据标识设置为真
 					this.preBlank = false;// 上次不为空读
 				}else{// 处理空读的情况
 					if(this.preBlank){
@@ -869,14 +872,6 @@ public class Client{
 		}
 	}
 	
-	public boolean isReadDataFlag() {
-		return readDataFlag;
-	}
-
-	public void setReadDataFlag(boolean readDataFlag) {
-		this.readDataFlag = readDataFlag;
-	}
-	
 	/**
 	 * 
 	 * <li>方法名：handShak
@@ -915,5 +910,13 @@ public class Client{
 
 	public void setProcessHandler(ProcessHandler processHandler) {
 		this.processHandler = processHandler;
+	}
+	
+	public int getReadStatus() {
+		return readStatus;
+	}
+
+	public void setReadStatus(int readStatus) {
+		this.readStatus = readStatus;
 	}
 }
